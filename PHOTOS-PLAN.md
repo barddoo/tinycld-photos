@@ -76,50 +76,50 @@ Sections: Timeline (home), Albums, Favorites, Trash. Selection highlights the ac
 
 ---
 
-## v2 — Rich Media & Organization
+## v2 — Rich Media & Organization ✅
 
 Add video, live photos, deeper organization.
 
 ### Data Model
 
 - New fields on `photos_items`:
-  - `type`: `image | video | live_photo`
-  - `duration` — video length in ms
-  - `live_photo_pair_id` — FK to paired still/video (Apple Live Photos)
+  - `type`: `image | video | live_photo` ✅
+  - `duration` — video length in ms ✅
+  - `live_photo_pair_id` — FK to paired still/video (Apple Live Photos) ✅
 
-- New collection `photos_tags` — hierarchical tags
+- New collection `photos_tags` — hierarchical tags ✅
   - `id`, `name`, `color`, `parent_id` (self-ref), `org`, `owner`
 
-- New collection `photos_item_tags` — M:N join
+- New collection `photos_item_tags` — M:N join ✅
   - `item`, `tag`
 
 ### Go Server
 
-- Video thumbnail generation (ffmpeg first-frame extraction)
-- Video metadata extraction (duration, codec, resolution)
-- Live Photo pairing: detect HEIC + MOV with matching filename stem
+- Video thumbnail generation (ffmpeg-go first-frame extraction) ✅
+- Video metadata extraction (duration, codec, resolution via ffprobe) ✅
+- Live Photo pairing: detect HEIC + MOV with matching filename stem ✅
 
 ### Screens
 
-- **Video player** — inline playback in viewer, scrub bar, mute toggle
-- **Tag management** — create/edit/delete tags, assign colors
-- **Tag filter sidebar** — filter timeline by tag
+- **Video player** — inline playback in viewer (opens in system player via Linking) ✅
+- **Tag management** — create/edit/delete tags, assign colors ✅
+- **Tag filter sidebar** — Tags nav item in sidebar + inline filter bar above timeline grid ✅
 
 ### Components
 
-- **VideoThumbnail** — thumbnail with duration badge + play overlay
-- **TagChip** — small colored pill for filter bar
-- **TagPicker** — search + select tags for a photo
+- **VideoThumbnail** — thumbnail with play overlay + duration badge ✅
+- **TagChip** — colored pill with remove option ✅
+- **TagPicker** — search + select/create tags ✅
 
 ### Hooks
 
-- **useVideoPlayer** — playback state, preload adjacent videos
-- **useTags** — tag CRUD queries
-- **useTagFilter** — active tag set, intersection logic
+- **useVideoPlayer** — playback state (play/pause/seek/mute) ✅
+- **useTags** — tag CRUD queries + usePhotoTags for per-photo assignment ✅
+- **useTagFilter** — active tag set with toggle/clear ✅
 
 ---
 
-## v3 — Intelligence & Discovery
+## v3 — Intelligence & Discovery ✅
 
 Add search, AI features, discovery surfaces.
 

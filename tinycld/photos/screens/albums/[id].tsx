@@ -8,7 +8,7 @@ import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ArrowLeft } from 'lucide-react-native'
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, RefreshControl, Text, View } from 'react-native'
+import { Dimensions, Pressable, RefreshControl, Text, View } from 'react-native'
 import DateSectionHeader from '../../components/DateSectionHeader'
 import PhotoCard from '../../components/PhotoCard'
 import { useAlbumPhotos } from '../../hooks/useAlbums'
@@ -30,6 +30,8 @@ export default function AlbumDetail() {
     const { photos, isLoading } = useAlbumPhotos(id)
 
     const cols = isMobile ? 3 : 4
+    const screenWidth = Dimensions.get('window').width
+    const cardSize = Math.floor((screenWidth - GRID_PADDING * 2 - GRID_GAP * (cols - 1)) / cols)
 
     const handlePhotoPress = useCallback(
         (photo: PhotoView) => {
@@ -48,7 +50,9 @@ export default function AlbumDetail() {
     }, [photos])
 
     const overrideItemLayout = useCallback(
-        (layout: { span?: number }) => {},
+        (layout: { span?: number }) => {
+            layout.span = 1
+        },
         []
     )
 
@@ -57,18 +61,17 @@ export default function AlbumDetail() {
             if (item.kind === 'section') {
                 return <DateSectionHeader label={item.title} photoCount={item.count} />
             }
-            const size = 100 // will be overridden by FlashList
             return (
                 <View style={{ paddingHorizontal: GRID_GAP / 2, paddingBottom: GRID_GAP }}>
                     <PhotoCard
                         photo={item.photo}
-                        size={size}
+                        size={cardSize}
                         onPress={handlePhotoPress}
                     />
                 </View>
             )
         },
-        [handlePhotoPress]
+        [handlePhotoPress, cardSize]
     )
 
     const keyExtractor = useCallback((row: ListRow) => {
@@ -100,6 +103,7 @@ export default function AlbumDetail() {
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     numColumns={cols}
+                    overrideItemLayout={overrideItemLayout}
                     contentContainerStyle={{ paddingHorizontal: GRID_PADDING - GRID_GAP / 2, paddingTop: 8 }}
                 />
             )}

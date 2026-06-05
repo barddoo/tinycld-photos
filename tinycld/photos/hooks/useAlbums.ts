@@ -1,4 +1,4 @@
-import { eq } from '@tanstack/db'
+import { eq, inArray } from '@tanstack/db'
 import { useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useMemo } from 'react'
@@ -85,20 +85,26 @@ export function useAlbumPhotos(albumId: string) {
     )
 
     const photoIds = useMemo(
-        () => new Set((albumItems ?? []).map(ai => ai.photo).filter(Boolean)),
+        () => (albumItems ?? []).map(ai => ai.photo).filter(Boolean) as string[],
         [albumItems]
     )
 
-    const { data: rawPhotos, isLoading } = useOrgLiveQuery(
-        (query, { orgId }) =>
-            query
+    const { data: albumPhotos, isLoading } = useOrgLiveQuery(
+        (query, { orgId }) => {
+            const base = query
                 .from({ p: itemsCollection })
-                .where(({ p }) => eq(p.org, orgId)),
+                .where(({ p }) => eq(p.org, orgId))
+            if (photoIds.length > 0) {
+                return base.where(({ p }) => inArray(p.id, photoIds))
+            }
+            return base
+        },
+        [photoIds],
     )
 
     const photos = useMemo<PhotoView[]>(
-        () => (rawPhotos ?? []).filter(p => photoIds.has(p.id)).map(photoToView),
-        [rawPhotos, photoIds]
+        () => (albumPhotos ?? []).map(photoToView),
+        [albumPhotos]
     )
 
     return { photos, isLoading }

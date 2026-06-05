@@ -16,7 +16,8 @@
     "./hooks/*": "./tinycld/photos/hooks/*.ts",
     "./components/*": "./tinycld/photos/components/*.tsx",
     "./stores/*": "./tinycld/photos/stores/*.ts",
-    "./lib/*": "./tinycld/photos/lib/*.ts"
+    "./lib/*": "./tinycld/photos/lib/*.ts",
+    "./settings/*": "./tinycld/photos/screens/settings/*.tsx"
   },
   "scripts": {
     "typecheck": "tinycld-pkg typecheck",
@@ -32,6 +33,7 @@
     "@tanstack/db": ">=0.6",
     "@tanstack/react-db": ">=0.1",
     "@tanstack/react-query": "^5.96.0",
+    "expo-haptics": "~55.0.14",
     "expo-router": ">=55.0.0",
     "lucide-react-native": "^1.7.0",
     "pbtsdb": ">=0.5",

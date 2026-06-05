@@ -1,6 +1,6 @@
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { Upload } from 'lucide-react-native'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, View } from 'react-native'
 
 interface Props {
     onFiles: (files: File[]) => void
@@ -10,6 +10,9 @@ export default function UploadButton({ onFiles }: Props) {
     const bg = useThemeColor('active-indicator')
 
     const handlePress = () => {
+        if (Platform.OS !== 'web' || typeof document === 'undefined') {
+            return
+        }
         const input = document.createElement('input')
         input.type = 'file'
         input.accept = 'image/*'
@@ -40,7 +43,7 @@ export default function UploadButton({ onFiles }: Props) {
 
 const styles = StyleSheet.create({
     wrapper: {
-        position: 'fixed' as any,
+        position: 'absolute' as const,
         bottom: 24,
         right: 24,
         zIndex: 50,

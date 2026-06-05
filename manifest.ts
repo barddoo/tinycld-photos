@@ -17,6 +17,13 @@ const manifest = {
     collections: { register: 'collections', types: 'types' },
     seed: { script: 'seed' },
     server: { package: 'server', module: 'tinycld.org/packages/photos' },
+    settings: [
+        {
+            slug: 'photos-ml',
+            component: 'settings/ml',
+            label: 'Photos ML',
+        },
+    ],
 }
 
 export default manifest
