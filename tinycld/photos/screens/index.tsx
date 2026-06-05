@@ -6,15 +6,19 @@ import { useBreakpoint } from '@tinycld/core/components/workspace/useBreakpoint'
 import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
 import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
+import { eq } from '@tanstack/db'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, RefreshControl, View, type LayoutChangeEvent } from 'react-native'
+import { Alert, Pressable, RefreshControl, ScrollView, View, type LayoutChangeEvent } from 'react-native'
 import DateSectionHeader from '../components/DateSectionHeader'
 import PhotoCard from '../components/PhotoCard'
+import TagChip from '../components/TagChip'
 import UploadButton from '../components/UploadButton'
 import { usePhotoMutations } from '../hooks/usePhotoMutations'
 import { usePhotos } from '../hooks/usePhotos'
-import type { ActiveSection, PhotoView } from '../types'
+import { useStore } from '@tinycld/core/lib/pocketbase'
+import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
+import type { ActiveSection, PhotoTag, PhotoView } from '../types'
 
 const GRID_GAP = 2
 const GRID_PADDING = 16
@@ -64,8 +68,28 @@ export default function PhotosTimeline({ section: _section }: Props) {
     const orgHref = useOrgHref()
     const isMobile = useBreakpoint() === 'mobile'
     const { photos, timeline, isLoading } = usePhotos(section)
-    const { uploadPhotos } = usePhotoMutations(orgId || '', userOrgId)
+    const { uploadPhotos, restorePhoto, permanentlyDelete } = usePhotoMutations(orgId || '', userOrgId)
     const { cols, cardSize, onLayout } = useGridColumns(isMobile)
+
+    const [tagsCollection] = useStore('photos_tags')
+    const { data: rawTags } = useOrgLiveQuery(
+        (query, { orgId }) =>
+            query
+                .from({ t: tagsCollection })
+                .where(({ t }) => eq(t.org, orgId))
+                .orderBy(({ t }) => t.name, 'asc'),
+        [],
+    )
+    const tags = (rawTags ?? []) as PhotoTag[]
+    const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
+    const toggleTag = useCallback((tagId: string) => {
+        setSelectedTagIds(prev => {
+            const next = new Set(prev)
+            if (next.has(tagId)) next.delete(tagId)
+            else next.add(tagId)
+            return next
+        })
+    }, [])
 
     const handleFiles = useCallback(
         async (files: File[]) => {
@@ -79,6 +103,29 @@ export default function PhotosTimeline({ section: _section }: Props) {
             router.push(orgHref('photos/[id]', { id: photo.id }))
         },
         [orgHref]
+    )
+
+    const handlePhotoLongPress = useCallback(
+        (photo: PhotoView) => {
+            if (section !== 'trash') return
+            Alert.alert(
+                photo.name,
+                'What would you like to do?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Restore',
+                        onPress: () => restorePhoto(photo.id),
+                    },
+                    {
+                        text: 'Delete permanently',
+                        style: 'destructive',
+                        onPress: () => permanentlyDelete(photo.id),
+                    },
+                ],
+            )
+        },
+        [section, restorePhoto, permanentlyDelete],
     )
 
     const [isRefreshing, setIsRefreshing] = useState(false)
@@ -124,6 +171,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
                             photo={item.photo}
                             size={cardSize}
                             onPress={handlePhotoPress}
+                            onLongPress={section === 'trash' ? handlePhotoLongPress : undefined}
                         />
                     </View>
                 )
@@ -162,10 +210,25 @@ export default function PhotosTimeline({ section: _section }: Props) {
         )
     }
 
+    const hasTagFilter = section === 'timeline' && tags.length > 0
+
     return (
         <>
             <View className="flex-1 bg-background" onLayout={onLayout}>
                 <DocumentTitle pkg="Photos" />
+                {hasTagFilter && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="py-2 px-3 flex-row gap-1.5">
+                        {tags.map(tag => (
+                            <TagChip
+                                key={tag.id}
+                                label={tag.name}
+                                color={tag.color}
+                                selected={selectedTagIds.has(tag.id)}
+                                onPress={() => toggleTag(tag.id)}
+                            />
+                        ))}
+                    </ScrollView>
+                )}
                 <FlashList<ListRow>
                     key={`cols-${cols}`}
                     data={rows}

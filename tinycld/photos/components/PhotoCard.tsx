@@ -1,7 +1,7 @@
 import { useAuthedThumbnailURL } from '@tinycld/core/file-viewer/use-authed-file-url'
 import { StarIcon } from '@tinycld/core/components/StarIcon'
 import { memo, useCallback } from 'react'
-import { Image, Pressable, View } from 'react-native'
+import { Alert, Image, Pressable, View } from 'react-native'
 import { photoToSource } from '../lib/file-url'
 import type { PhotoView } from '../types'
 
@@ -9,16 +9,24 @@ interface Props {
     photo: PhotoView
     size: number
     onPress: (photo: PhotoView) => void
+    onLongPress?: (photo: PhotoView) => void
 }
 
-const PhotoCard = memo(function PhotoCard({ photo, size, onPress }: Props) {
+const PhotoCard = memo(function PhotoCard({ photo, size, onPress, onLongPress }: Props) {
     const { url: thumbnailUrl } = useAuthedThumbnailURL(photoToSource(photo), `${size * 2}x${size * 2}`)
 
     const handlePress = useCallback(() => onPress(photo), [photo, onPress])
 
+    const handleLongPress = useCallback(() => {
+        if (onLongPress) {
+            onLongPress(photo)
+        }
+    }, [photo, onLongPress])
+
     return (
         <Pressable
             onPress={handlePress}
+            onLongPress={handleLongPress}
             style={{ width: size, height: size }}
             className="overflow-hidden"
             accessibilityRole="imagebutton"
