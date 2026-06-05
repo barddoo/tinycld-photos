@@ -2,7 +2,7 @@ import { eq } from '@tanstack/db'
 import { useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useMemo } from 'react'
-import type { PhotoAlbum } from '../types'
+import type { PhotoAlbum, PhotoItem } from '../types'
 import type { AlbumView, PhotoView } from '../types'
 import { photoToView } from './usePhotos'
 
@@ -21,6 +21,7 @@ function albumToView(album: PhotoAlbum, count: number): AlbumView {
 export function useAlbums() {
     const [albumsCollection] = useStore('photos_albums')
     const [albumItemsCollection] = useStore('photos_album_items')
+    const [photosCollection] = useStore('photos_items')
 
     const { data: rawAlbums, isLoading: albumsLoading } = useOrgLiveQuery(
         (query, { orgId }) =>
@@ -33,6 +34,23 @@ export function useAlbums() {
     const { data: rawAlbumItems } = useOrgLiveQuery(
         (query) => query.from({ ai: albumItemsCollection }),
     )
+
+    const { data: rawPhotos } = useOrgLiveQuery(
+        (query, { orgId }) =>
+            query
+                .from({ p: photosCollection })
+                .where(({ p }) => eq(p.org, orgId)),
+    )
+
+    const coverPhotoMap = useMemo(() => {
+        const map = new Map<string, PhotoView>()
+        const photos = (rawPhotos ?? []) as PhotoItem[]
+        const allPhotos = photos.map(photoToView)
+        for (const photo of allPhotos) {
+            map.set(photo.id, photo)
+        }
+        return map
+    }, [rawPhotos])
 
     const photoCounts = useMemo(() => {
         const counts = new Map<string, number>()
@@ -50,7 +68,7 @@ export function useAlbums() {
         [rawAlbums, photoCounts]
     )
 
-    return { albums, isLoading: albumsLoading }
+    return { albums, coverPhotoMap, isLoading: albumsLoading }
 }
 
 export function useAlbumPhotos(albumId: string) {

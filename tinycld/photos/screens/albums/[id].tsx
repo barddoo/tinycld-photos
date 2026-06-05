@@ -7,7 +7,7 @@ import { useOrgHref } from '@tinycld/core/lib/org-routes'
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ArrowLeft } from 'lucide-react-native'
-import { useCallback, useMemo, useState, type LayoutChangeEvent } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Pressable, RefreshControl, Text, View } from 'react-native'
 import DateSectionHeader from '../../components/DateSectionHeader'
 import PhotoCard from '../../components/PhotoCard'
@@ -71,7 +71,10 @@ export default function AlbumDetail() {
         [handlePhotoPress]
     )
 
-    const keyExtractor = useCallback((row: ListRow) => row.photo.id, [])
+    const keyExtractor = useCallback((row: ListRow) => {
+        if (row.kind === 'section') return `section-${row.title}`
+        return row.photo.id
+    }, [])
 
     if (isLoading) {
         return <LoadingState />

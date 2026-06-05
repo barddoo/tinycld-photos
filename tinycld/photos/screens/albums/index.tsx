@@ -28,7 +28,7 @@ export default function AlbumsIndex() {
     const bgMuted = useThemeColor('muted-foreground')
     const orgHref = useOrgHref()
 
-    const { albums, isLoading } = useAlbums()
+    const { albums, coverPhotoMap, isLoading } = useAlbums()
     const { createAlbum } = useAlbumMutations(orgId, userOrgId)
 
     const [showCreate, setShowCreate] = useState(false)
@@ -82,7 +82,7 @@ export default function AlbumsIndex() {
                 renderItem={({ item }) => (
                     <AlbumCard
                         album={item}
-                        coverPhoto={null}
+                        coverPhoto={item.coverPhotoId ? coverPhotoMap.get(item.coverPhotoId) : null}
                         onPress={handleAlbumPress}
                     />
                 )}

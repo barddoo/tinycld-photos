@@ -1,4 +1,4 @@
-import { desc, eq } from '@tanstack/db'
+import { eq } from '@tanstack/db'
 import { useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useMemo } from 'react'

@@ -3,12 +3,15 @@ import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
 import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
 import { router, useLocalSearchParams } from 'expo-router'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { ArrowLeft, Heart, Info, Trash2 } from 'lucide-react-native'
-import { useCallback, useMemo, useState } from 'react'
-import { Dimensions, Image, Pressable, ScrollView, Text, View } from 'react-native'
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Dimensions, FlatList, Image, Pressable, ScrollView, Text, View } from 'react-native'
 import { photoToSource } from '../lib/file-url'
 import { usePhotoMutations } from '../hooks/usePhotoMutations'
 import { usePhotos } from '../hooks/usePhotos'
+import type { PhotoView } from '../types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 
@@ -20,13 +23,15 @@ export default function PhotoDetail() {
     const orgHref = useOrgHref()
 
     const { allPhotos } = usePhotos('timeline')
-    const photo = useMemo(() => allPhotos.find(p => p.id === id), [allPhotos, id])
+    const initialIndex = useMemo(() => allPhotos.findIndex(p => p.id === id), [allPhotos, id])
+    const [activeIndex, setActiveIndex] = useState(Math.max(0, initialIndex))
+    const [scrollEnabled, setScrollEnabled] = useState(true)
+    const flatListRef = useRef<FlatList<PhotoView>>(null)
+
+    const photo = allPhotos[activeIndex]
     const { toggleFavorite, trashPhoto } = usePhotoMutations(orgId, userOrgId)
 
     const [showInfo, setShowInfo] = useState(false)
-
-    const source = photo ? photoToSource(photo) : undefined
-    const { url: imageUrl } = useAuthedThumbnailURL(source, `${SCREEN_WIDTH * 2}x${SCREEN_HEIGHT * 2}`)
 
     const handleBack = useCallback(() => {
         if (router.canGoBack()) router.back()
@@ -46,44 +51,46 @@ export default function PhotoDetail() {
         handleBack()
     }, [photo, trashPhoto, handleBack])
 
-    if (!photo) {
+    const onMomentumEnd = useCallback((e: { nativeEvent: { contentOffset: { x: number } } }) => {
+        const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH)
+        setActiveIndex(index)
+    }, [])
+
+    const renderPhoto = useCallback(({ item }: { item: PhotoView }) => {
         return (
-            <View className="flex-1 bg-background items-center justify-center">
-                <Text className="text-foreground">Photo not found</Text>
-            </View>
+            <ZoomableImage
+                photo={item}
+                onZoomChange={setScrollEnabled}
+                onTap={handleToggleInfo}
+                onSwipeDown={handleBack}
+            />
         )
-    }
-
-    const takenDate = photo.takenAt
-        ? new Date(photo.takenAt).toLocaleDateString(undefined, {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-          })
-        : 'Unknown date'
-
-    const imageStyle = {
-        width: photo.width && photo.height
-            ? Math.min(SCREEN_WIDTH, (photo.width / photo.height) * SCREEN_HEIGHT)
-            : SCREEN_WIDTH,
-        height: SCREEN_HEIGHT,
-    }
+    }, [handleToggleInfo, handleBack, setScrollEnabled])
 
     return (
         <View className="flex-1" style={{ backgroundColor: '#000' }}>
-            {imageUrl ? (
-                <View className="flex-1 items-center justify-center">
-                    <Image
-                        source={{ uri: imageUrl }}
-                        style={imageStyle}
-                        resizeMode="contain"
-                    />
-                </View>
-            ) : (
-                <View className="flex-1 items-center justify-center">
-                    <Text style={{ color: '#666', fontSize: 16 }}>Loading...</Text>
-                </View>
-            )}
+            <FlatList<PhotoView>
+                ref={flatListRef}
+                data={allPhotos}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEnabled={scrollEnabled}
+                onMomentumScrollEnd={onMomentumEnd}
+                initialScrollIndex={Math.max(0, initialIndex)}
+                getItemLayout={useCallback(
+                    (_: any, index: number) => ({
+                        length: SCREEN_WIDTH,
+                        offset: SCREEN_WIDTH * index,
+                        index,
+                    }),
+                    []
+                )}
+                keyExtractor={useCallback((p: PhotoView) => p.id, [])}
+                renderItem={renderPhoto}
+                maxToRenderPerBatch={3}
+                windowSize={3}
+            />
 
             <View
                 className="absolute top-0 left-0 right-0 flex-row items-center justify-between px-4 pt-12 pb-3"
@@ -97,43 +104,179 @@ export default function PhotoDetail() {
                     className="flex-1 text-center text-white font-medium mx-2"
                     style={{ fontSize: 16 }}
                 >
-                    {photo.name}
+                    {photo?.name ?? ''}
                 </Text>
                 <Pressable onPress={handleToggleInfo} className="p-2" accessibilityRole="button" accessibilityLabel="Photo info">
                     <Info size={22} color={showInfo ? '#60a5fa' : '#fff'} />
                 </Pressable>
             </View>
 
-            {showInfo && (
-                <View
-                    className="absolute bottom-0 left-0 right-0 px-4 py-4 pb-8"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
-                >
-                    <ScrollView className="max-h-60">
-                        <View className="gap-2">
-                            <Text className="text-white text-lg font-semibold">{photo.name}</Text>
-                            <Text className="text-gray-400 text-sm">{takenDate}</Text>
-                            {photo.width && photo.height ? (
-                                <Text className="text-gray-400 text-sm">{photo.width} × {photo.height}</Text>
-                            ) : null}
-                            <Text className="text-gray-400 text-sm">{photo.mimeType}</Text>
-                            <View className="flex-row gap-4 pt-2">
-                                <ActionButton
-                                    icon={Heart}
-                                    label={photo.isFavorite ? 'Unfavorite' : 'Favorite'}
-                                    onPress={handleToggleFavorite}
-                                    active={photo.isFavorite}
-                                />
-                                <ActionButton
-                                    icon={Trash2}
-                                    label="Delete"
-                                    onPress={handleTrash}
-                                />
-                            </View>
-                        </View>
-                    </ScrollView>
-                </View>
+            {showInfo && photo && (
+                <InfoOverlay photo={photo} onToggleFavorite={handleToggleFavorite} onTrash={handleTrash} />
             )}
+        </View>
+    )
+}
+
+function ZoomableImage({
+    photo,
+    onZoomChange,
+    onTap,
+    onSwipeDown,
+}: {
+    photo: PhotoView
+    onZoomChange: (zoomed: boolean) => void
+    onTap: () => void
+    onSwipeDown: () => void
+}) {
+    const scale = useSharedValue(1)
+    const savedScale = useSharedValue(1)
+    const translateX = useSharedValue(0)
+    const translateY = useSharedValue(0)
+    const savedTranslateX = useSharedValue(0)
+    const savedTranslateY = useSharedValue(0)
+
+    const source = useMemo(() => photoToSource(photo), [photo])
+    const { url: imageUrl } = useAuthedThumbnailURL(source, `${SCREEN_WIDTH * 2}x${SCREEN_HEIGHT * 2}`)
+
+    const handleZoomChange = useCallback((zoomed: boolean) => {
+        onZoomChange(!zoomed)
+    }, [onZoomChange])
+
+    const handleSwipeDown = useCallback(() => {
+        onSwipeDown()
+    }, [onSwipeDown])
+
+    const pinchGesture = Gesture.Pinch()
+        .onStart(() => {
+            savedScale.value = scale.value
+        })
+        .onUpdate((e) => {
+            const newScale = Math.max(1, Math.min(5, savedScale.value * e.scale))
+            scale.value = newScale
+        })
+        .onEnd(() => {
+            if (scale.value <= 1) {
+                scale.value = withSpring(1)
+                translateX.value = withSpring(0)
+                translateY.value = withSpring(0)
+                runOnJS(handleZoomChange)(false)
+            } else {
+                runOnJS(handleZoomChange)(true)
+            }
+        })
+
+    const panGesture = Gesture.Pan()
+        .minPointers(1)
+        .onStart(() => {
+            savedTranslateX.value = translateX.value
+            savedTranslateY.value = translateY.value
+        })
+        .onUpdate((e) => {
+            if (scale.value > 1) {
+                translateX.value = savedTranslateX.value + e.translationX
+                translateY.value = savedTranslateY.value + e.translationY
+            } else {
+                translateX.value = e.translationX
+                translateY.value = e.translationY
+            }
+        })
+        .onEnd((e) => {
+            if (scale.value <= 1) {
+                if (e.translationY > 100) {
+                    runOnJS(handleSwipeDown)()
+                }
+                translateX.value = withSpring(0)
+                translateY.value = withSpring(0)
+            } else {
+                translateX.value = withSpring(translateX.value)
+                translateY.value = withSpring(translateY.value)
+            }
+        })
+
+    const tapGesture = Gesture.Tap()
+        .onEnd(() => {
+            runOnJS(onTap)()
+        })
+
+    const composed = Gesture.Simultaneous(pinchGesture, panGesture)
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateX: translateX.value },
+            { translateY: translateY.value },
+            { scale: scale.value },
+        ],
+    }))
+
+    if (!imageUrl) {
+        return (
+            <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#666', fontSize: 16 }}>Loading...</Text>
+            </View>
+        )
+    }
+
+    return (
+        <GestureDetector gesture={composed}>
+            <Animated.View style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, justifyContent: 'center', alignItems: 'center' }]}>
+                <GestureDetector gesture={tapGesture}>
+                    <Animated.Image
+                        source={{ uri: imageUrl }}
+                        style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, animatedStyle]}
+                        resizeMode="contain"
+                    />
+                </GestureDetector>
+            </Animated.View>
+        </GestureDetector>
+    )
+}
+
+function InfoOverlay({
+    photo,
+    onToggleFavorite,
+    onTrash,
+}: {
+    photo: PhotoView
+    onToggleFavorite: () => void
+    onTrash: () => void
+}) {
+    const takenDate = photo.takenAt
+        ? new Date(photo.takenAt).toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+          })
+        : 'Unknown date'
+
+    return (
+        <View
+            className="absolute bottom-0 left-0 right-0 px-4 py-4 pb-8"
+            style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
+        >
+            <ScrollView className="max-h-60">
+                <View className="gap-2">
+                    <Text className="text-white text-lg font-semibold">{photo.name}</Text>
+                    <Text className="text-gray-400 text-sm">{takenDate}</Text>
+                    {photo.width && photo.height ? (
+                        <Text className="text-gray-400 text-sm">{photo.width} × {photo.height}</Text>
+                    ) : null}
+                    <Text className="text-gray-400 text-sm">{photo.mimeType}</Text>
+                    <View className="flex-row gap-4 pt-2">
+                        <ActionButton
+                            icon={Heart}
+                            label={photo.isFavorite ? 'Unfavorite' : 'Favorite'}
+                            onPress={onToggleFavorite}
+                            active={photo.isFavorite}
+                        />
+                        <ActionButton
+                            icon={Trash2}
+                            label="Delete"
+                            onPress={onTrash}
+                        />
+                    </View>
+                </View>
+            </ScrollView>
         </View>
     )
 }
