@@ -3,17 +3,16 @@ import { pb, useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PhotoItem, PhotoView } from '../types'
-import { photoToView } from './usePhotos'
+import { photoToView } from '../lib/photo-utils'
+import { filterPhotosByText, mergeSearchResults } from '../lib/search-utils'
+import type { SemanticSearchResult } from '../lib/search-utils'
 
 interface UseSearchOptions {
     query: string
     debounceMs?: number
 }
 
-interface SemanticResult {
-    id: string
-    score: number
-}
+type SemanticResult = SemanticSearchResult
 
 export function useSearch({ query, debounceMs = 300 }: UseSearchOptions) {
     const [debounced, setDebounced] = useState('')
@@ -36,14 +35,7 @@ export function useSearch({ query, debounceMs = 300 }: UseSearchOptions) {
 
     const ftsResults = useMemo<PhotoView[]>(() => {
         if (!raw) return []
-        const q = debounced.trim().toLowerCase()
-        if (!q) return []
-        return (raw as PhotoItem[]).map(photoToView).filter(p => {
-            const name = (p.name || '').toLowerCase()
-            const desc = (p.description || '').toLowerCase()
-            const loc = (p.location || '').toLowerCase()
-            return name.includes(q) || desc.includes(q) || loc.includes(q)
-        })
+        return filterPhotosByText((raw as PhotoItem[]).map(photoToView), debounced)
     }, [raw, debounced])
 
     const searchSemantic = useCallback(async (q: string) => {
@@ -82,16 +74,9 @@ export function useSearch({ query, debounceMs = 300 }: UseSearchOptions) {
     }, [debounced, searchSemantic])
 
     const mergedResults = useMemo<PhotoView[]>(() => {
-        if (!raw || semanticResults.length === 0) return ftsResults
-
-        const semanticIds = new Set(semanticResults.map(r => r.id))
+        if (!raw) return ftsResults
         const allPhotos = (raw as PhotoItem[]).map(photoToView)
-
-        const semanticPhotos = allPhotos.filter(p => semanticIds.has(p.id))
-        const ftsIds = new Set(ftsResults.map(r => r.id))
-        const ftsOnly = ftsResults.filter(r => !semanticIds.has(r.id))
-
-        return [...semanticPhotos, ...ftsOnly]
+        return mergeSearchResults(allPhotos, semanticResults, ftsResults)
     }, [raw, semanticResults, ftsResults])
 
     return {

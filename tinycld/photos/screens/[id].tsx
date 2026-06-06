@@ -51,6 +51,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useAlbumMutations } from '../hooks/useAlbumMutations'
 import { useAlbums } from '../hooks/useAlbums'
+import { getPreviewActionFactories } from '@tinycld/core/file-viewer/preview-action-registry'
 import { usePhotoMutations } from '../hooks/usePhotoMutations'
 import { usePhotos } from '../hooks/usePhotos'
 import { photoToSource } from '../lib/file-url'
@@ -850,6 +851,7 @@ function RichInfoOverlay({
                                     disabled={isDownloading}
                                 />
                                 <ActionButton icon={Share2} label="Share" onPress={onShare} />
+                                <RegistryActionButtons photo={photo} onClose={onClose} />
                                 <ActionButton
                                     icon={Trash2}
                                     label="Delete"
@@ -863,6 +865,28 @@ function RichInfoOverlay({
             </ScrollView>
         </View>
     )
+}
+
+function RegistryActionButtons({
+    photo,
+    onClose,
+}: {
+    photo: PhotoView
+    onClose: () => void
+}) {
+    const actions = getPreviewActionFactories()
+        .map(f => f())
+        .filter(a => a.isApplicable?.(photoToSource(photo)) ?? true)
+
+    return actions.map(a => (
+        <ActionButton
+            key={a.id}
+            icon={a.icon}
+            label={a.label}
+            onPress={() => a.onPress(photoToSource(photo), { close: onClose })}
+            disabled={a.isPending}
+        />
+    ))
 }
 
 function AlbumPickerModal({

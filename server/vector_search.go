@@ -219,7 +219,7 @@ func (s *UsearchSearcher) init() error {
 		return fmt.Errorf("create index dir: %w", err)
 	}
 
-	conf := usearch.DefaultConfig(512)
+	conf := usearch.DefaultConfig(ClipDim)
 	conf.Metric = usearch.Cosine
 	conf.Quantization = usearch.F32
 
@@ -257,7 +257,7 @@ func (s *UsearchSearcher) rebuildFromDB() error {
 		if err := json.Unmarshal([]byte(vecStr), &vec); err != nil {
 			continue
 		}
-		if len(vec) != 512 {
+		if len(vec) != ClipDim {
 			continue
 		}
 		u64Key := s.idMap.GetOrAssign(r.Id)
@@ -302,7 +302,11 @@ func (s *UsearchSearcher) Upsert(ctx context.Context, photoID string, embedding 
 		return fmt.Errorf("index not initialized")
 	}
 
+	exists := s.idMap.Contains(photoID)
 	u64Key := s.idMap.GetOrAssign(photoID)
+	if exists {
+		_ = s.idx.Remove(usearch.Key(u64Key))
+	}
 	if err := s.idx.Add(usearch.Key(u64Key), embedding); err != nil {
 		return fmt.Errorf("usearch upsert: %w", err)
 	}

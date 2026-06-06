@@ -3,6 +3,9 @@ import { useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useMemo } from 'react'
 import type { PersonView, PhotosFace, PhotosPerson } from '../types'
+import { filterVisiblePeople, toPersonView, uniquePhotoIds } from '../lib/people-utils'
+
+export { filterVisiblePeople, toPersonView, uniquePhotoIds } from '../lib/people-utils'
 
 export function usePeople() {
     const [peopleStore] = useStore('photos_people')
@@ -16,17 +19,7 @@ export function usePeople() {
 
     const viewModels = useMemo<PersonView[]>(() => {
         if (!people) return []
-        return people
-            .filter((p: PhotosPerson) => !p.is_hidden)
-            .map((p: PhotosPerson) => ({
-                id: p.id,
-                name: p.name,
-                thumbnailFace: p.thumbnail_face || null,
-                isHidden: p.is_hidden || false,
-                birthDate: p.birth_date || null,
-                color: p.color || null,
-                photoCount: 0,
-            }))
+        return filterVisiblePeople(people as PhotosPerson[]).map(toPersonView)
     }, [people])
 
     return { people: viewModels, isLoading }
@@ -42,7 +35,7 @@ export function usePersonPhotos(personId: string) {
 
     const photoIds = useMemo(() => {
         if (!faces) return []
-        return [...new Set(faces.map((f: PhotosFace) => f.photo))]
+        return uniquePhotoIds(faces as PhotosFace[])
     }, [faces])
 
     return { photoIds, isLoading }

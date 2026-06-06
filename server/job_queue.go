@@ -2,6 +2,7 @@ package photos
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -298,7 +299,15 @@ func (q *JobQueue) processEncodeCLIP(jobs []*core.Record) error {
 		encoded, _ := json.Marshal(emb)
 		photo.Set("smart_search_vector", string(encoded))
 		photo.Set("ml_status", "done")
-		q.app.Save(photo)
+		if err := q.app.Save(photo); err != nil {
+			q.app.Logger().Warn("clip encode: save vector failed", "photo", photo.Id, "error", err)
+			continue
+		}
+		if searcher := GetVectorSearcher(); searcher != nil {
+			if err := searcher.Upsert(context.Background(), photo.Id, emb); err != nil {
+				q.app.Logger().Warn("clip encode: update vector index failed", "photo", photo.Id, "error", err)
+			}
+		}
 	}
 
 	return nil

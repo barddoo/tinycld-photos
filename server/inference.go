@@ -34,6 +34,8 @@ type OCRResult struct {
 	BBox       [][2]float32
 }
 
+const ClipDim = 768
+
 type InferenceEngine struct {
 	libPath  string
 	cacheDir string
@@ -379,6 +381,17 @@ func (e *InferenceEngine) EncodeClipVisual(images [][]byte) ([][]float32, error)
 	if batchSize == 0 {
 		return nil, nil
 	}
+	if batchSize > 1 {
+		embeddings := make([][]float32, 0, batchSize)
+		for _, image := range images {
+			one, err := e.EncodeClipVisual([][]byte{image})
+			if err != nil {
+				return nil, err
+			}
+			embeddings = append(embeddings, one[0])
+		}
+		return embeddings, nil
+	}
 
 	processed, err := e.preprocessBatch(images, 224, 224)
 	if err != nil {
@@ -393,7 +406,7 @@ func (e *InferenceEngine) EncodeClipVisual(images [][]byte) ([][]float32, error)
 	}
 	defer inputTensor.Destroy()
 
-	outputShape := ort.NewShape(int64(batchSize), 512)
+	outputShape := ort.NewShape(int64(batchSize), ClipDim)
 	outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
 	if err != nil {
 		return nil, fmt.Errorf("output tensor: %w", err)
@@ -407,7 +420,7 @@ func (e *InferenceEngine) EncodeClipVisual(images [][]byte) ([][]float32, error)
 	data := outputTensor.GetData()
 	embeddings := make([][]float32, batchSize)
 	for i := range embeddings {
-		embeddings[i] = data[i*512 : (i+1)*512]
+		embeddings[i] = data[i*ClipDim : (i+1)*ClipDim]
 	}
 	return embeddings, nil
 }
@@ -425,17 +438,28 @@ func (e *InferenceEngine) EncodeClipText(texts []string) ([][]float32, error) {
 	if batchSize == 0 {
 		return nil, nil
 	}
+	if batchSize > 1 {
+		embeddings := make([][]float32, 0, batchSize)
+		for _, text := range texts {
+			one, err := e.EncodeClipText([]string{text})
+			if err != nil {
+				return nil, err
+			}
+			embeddings = append(embeddings, one[0])
+		}
+		return embeddings, nil
+	}
 
 	maxLen := 64
 	tokenized := tokenizeTexts(texts, maxLen)
 
-	inputIds := make([]float32, batchSize*maxLen)
-	attnMask := make([]float32, batchSize*maxLen)
+	inputIds := make([]int32, batchSize*maxLen)
+	attnMask := make([]int32, batchSize*maxLen)
 	for i, ids := range tokenized {
 		for j, id := range ids {
-			inputIds[i*maxLen+j] = float32(id)
+			inputIds[i*maxLen+j] = int32(id)
 			if id != 0 {
-				attnMask[i*maxLen+j] = 1.0
+				attnMask[i*maxLen+j] = 1
 			}
 		}
 	}
@@ -453,7 +477,7 @@ func (e *InferenceEngine) EncodeClipText(texts []string) ([][]float32, error) {
 	}
 	defer attnMaskTensor.Destroy()
 
-	outputShape := ort.NewShape(int64(batchSize), 512)
+	outputShape := ort.NewShape(int64(batchSize), ClipDim)
 	outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
 	if err != nil {
 		return nil, fmt.Errorf("output tensor: %w", err)
@@ -479,7 +503,7 @@ func (e *InferenceEngine) EncodeClipText(texts []string) ([][]float32, error) {
 	data := outputTensor.GetData()
 	embeddings := make([][]float32, batchSize)
 	for i := range embeddings {
-		embeddings[i] = data[i*512 : (i+1)*512]
+		embeddings[i] = data[i*ClipDim : (i+1)*ClipDim]
 	}
 	return embeddings, nil
 }

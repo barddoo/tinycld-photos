@@ -113,9 +113,9 @@ export default function MLSettings() {
     ])
 
     const handleReprocess = useCallback(async () => {
-        Alert.alert(
-            'Reprocess Photos',
-            'This will re-run ML processing on all photos with pending or failed status. Continue?',
+		Alert.alert(
+			'Reprocess Photos',
+			'This will re-run ML processing on all photos. Continue?',
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -133,7 +133,7 @@ export default function MLSettings() {
                                         'compute_phash',
                                         'reverse_geocode',
                                     ],
-                                    status: 'pending',
+								status: 'all',
                                 },
                             })
                             const result = resp as { enqueued: number; photos: number }

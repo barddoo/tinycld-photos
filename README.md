@@ -25,6 +25,25 @@ pnpm exec tinycld-pkg test:e2e # playwright e2e specs
 Server plugin in `server/` (Go module `tinycld.org/packages/photos`). Provides
 ML inference, vector search, thumbnailing, EXIF extraction, and geocoding.
 
+### Setting environment variables
+
+The Go server loads env vars from `.env` in its working directory (`app/`) or
+from the shell environment. `photos/.env` is NOT picked up automatically — you
+must copy the vars to where the Go binary can read them.
+
+**Option 1 — `.env` in `app/` (recommended)**: Copy `photos/.env.example` to
+`app/.env` and customize:
+
+```sh
+cp photos/.env.example app/.env
+```
+
+**Option 2 — inline export**: Export vars before running the dev command:
+
+```sh
+MACHINE_LEARNING_ENABLED=1 ONNXRUNTIME_SHARED_LIBRARY_PATH=/opt/homebrew/lib/libonnxruntime.dylib cd app && pnpm run dev
+```
+
 ### libonnxruntime (ML inference)
 
 ONNX Runtime shared library required for ML features. Set `ONNXRUNTIME_SHARED_LIBRARY_PATH`

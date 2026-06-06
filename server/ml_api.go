@@ -77,6 +77,10 @@ func handleMLStatus(app *pocketbase.PocketBase, re *core.RequestEvent) error {
 		"jobs":             map[string]int{},
 		"settings":         map[string]interface{}{},
 	}
+	if q := mlQueue.Load(); q != nil && q.engine != nil {
+		status["engine_available"] = q.engine.IsAvailable()
+		status["gpu_provider"] = q.engine.GPUProvider()
+	}
 
 	records, _ := app.FindRecordsByFilter("photos_job_queue", "", "", 0, 0)
 	jobCounts := map[string]int{
@@ -132,7 +136,10 @@ func handleReprocess(app *pocketbase.PocketBase, re *core.RequestEvent) error {
 	if body.Status == "" {
 		body.Status = "pending"
 	}
-	if body.Status == "failed" {
+	if body.Status == "all" {
+		// Empty filters can return no photo records for this collection; match all known ML states explicitly.
+		filter = "ml_status = 'pending' || ml_status = 'failed' || ml_status = 'processing' || ml_status = 'done' || ml_status = ''"
+	} else if body.Status == "failed" {
 		filter = "ml_status = 'failed'"
 	} else if body.Status == "pending" {
 		filter = "ml_status = 'pending' || ml_status = 'failed'"
