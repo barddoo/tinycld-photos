@@ -275,6 +275,9 @@ export interface PersonView {
     id: string
     name: string
     thumbnailFace: string | null
+    thumbnailPhotoId: string | null
+    thumbnailPhotoFile: string | null
+    thumbnailPhotoThumb: string | null
     isHidden: boolean
     birthDate: string | null
     color: string | null

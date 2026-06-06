@@ -1,10 +1,18 @@
 import type { PersonView, PhotosFace, PhotosPerson } from '../types'
 
-export function toPersonView(p: PhotosPerson): PersonView {
+export function toPersonView(
+    p: PhotosPerson,
+    thumbnailPhotoId?: string,
+    thumbnailPhotoFile?: string,
+    thumbnailPhotoThumb?: string
+): PersonView {
     return {
         id: p.id,
         name: p.name,
         thumbnailFace: p.thumbnail_face || null,
+        thumbnailPhotoId: thumbnailPhotoId ?? null,
+        thumbnailPhotoFile: thumbnailPhotoFile ?? null,
+        thumbnailPhotoThumb: thumbnailPhotoThumb ?? null,
         isHidden: p.is_hidden || false,
         birthDate: p.birth_date || null,
         color: p.color || null,

@@ -47,6 +47,14 @@ jobs:
       #    npm-like flat node_modules so member peerDeps resolve.
       - name: Enable corepack (pnpm)
         run: corepack enable
+      - name: Install system dependencies (CGO)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libheif-dev
+          git clone --depth 1 https://github.com/unum-cloud/usearch.git /tmp/usearch
+          sudo cp /tmp/usearch/include/usearch.h /usr/local/include/
+          sudo cp -r /tmp/usearch/include/fp16 /usr/local/include/
+          sudo cp -r /tmp/usearch/include/simsimd /usr/local/include/
       - name: Install (workspace root)
         working-directory: ws
         run: pnpm install --no-frozen-lockfile
@@ -78,6 +86,14 @@ jobs:
           go-version-file: ws/.go-version
       - name: Enable corepack (pnpm)
         run: corepack enable
+      - name: Install system dependencies (CGO)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libheif-dev
+          git clone --depth 1 https://github.com/unum-cloud/usearch.git /tmp/usearch
+          sudo cp /tmp/usearch/include/usearch.h /usr/local/include/
+          sudo cp -r /tmp/usearch/include/fp16 /usr/local/include/
+          sudo cp -r /tmp/usearch/include/simsimd /usr/local/include/
       - name: Install (workspace root)
         working-directory: ws
         run: pnpm install --no-frozen-lockfile

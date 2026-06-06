@@ -1,6 +1,6 @@
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { useCallback, useMemo, useState } from 'react'
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native'
+import { Pressable, Text, TextInput, View } from 'react-native'
 import TagChip from './TagChip'
 
 interface TagOption {

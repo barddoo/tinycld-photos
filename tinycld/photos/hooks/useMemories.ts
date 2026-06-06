@@ -41,7 +41,7 @@ export function useMemories() {
             if (!itemsByMemory.has(mi.memory)) {
                 itemsByMemory.set(mi.memory, [])
             }
-            itemsByMemory.get(mi.memory)!.push(mi.photo)
+            itemsByMemory.get(mi.memory)?.push(mi.photo)
         }
 
         return (rawMemories as PhotosMemory[]).map(m => {

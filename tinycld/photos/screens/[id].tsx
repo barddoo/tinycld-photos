@@ -515,8 +515,14 @@ function ZoomableImage({
     const savedTranslateY = useSharedValue(0)
 
     const source = useMemo(() => photoToSource(photo), [photo])
+    // Use original file (not pre-generated thumbnail) as the base for PocketBase's
+    // on-the-fly resize, so the viewer always derives from the full-res original.
+    const viewerSource = useMemo(
+        () => ({ ...source, thumbnailFileName: undefined }),
+        [source]
+    )
     const { url: thumbUrl, isLoading: thumbLoading } = useAuthedThumbnailURL(
-        source,
+        viewerSource,
         `${Math.round(width * 2)}x${Math.round(height * 2)}`
     )
     const { url: fullUrl } = useAuthedFileURL(source)
