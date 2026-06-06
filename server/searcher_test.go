@@ -190,6 +190,24 @@ func TestUsearchSearcher(t *testing.T) {
 		}
 	})
 
+	t.Run("unrelated vectors are filtered by score threshold", func(t *testing.T) {
+		// axis-0 query vs axis-1 vector: cosine similarity = 0 → score = 1.0 - 1.0 = 0 < 0.1
+		s := makeUsearchSearcher(t, dim, indexPath)
+		_ = s.Upsert(context.Background(), "orthogonal", makeEmbedding(dim, 1))
+		results, err := s.Search(context.Background(), makeEmbedding(dim, 0), 10)
+		if err != nil {
+			t.Fatalf("Search error: %v", err)
+		}
+		for _, r := range results {
+			if r.Score < 0.1 {
+				t.Errorf("result %q has score %v below threshold 0.1", r.PhotoID, r.Score)
+			}
+		}
+		if len(results) != 0 {
+			t.Errorf("orthogonal vector should be filtered out, got %d results", len(results))
+		}
+	})
+
 	t.Run("Search returns error when index is nil", func(t *testing.T) {
 		s := &UsearchSearcher{} // idx is nil
 		_, err := s.Search(context.Background(), makeEmbedding(dim, 0), 5)

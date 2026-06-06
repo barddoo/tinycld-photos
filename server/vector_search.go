@@ -284,11 +284,14 @@ func (s *UsearchSearcher) Search(ctx context.Context, query []float32, topK int)
 
 	results := make([]SearchResult, 0, len(keys))
 	for i := range keys {
+		score := 1.0 - distances[i]
+		if score < 0.1 {
+			continue
+		}
 		strID, ok := idMap.GetString(uint64(keys[i]))
 		if !ok {
 			continue
 		}
-		score := 1.0 - distances[i]
 		results = append(results, SearchResult{PhotoID: strID, Score: score})
 	}
 	return results, nil

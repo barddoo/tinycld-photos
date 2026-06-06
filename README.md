@@ -2,6 +2,55 @@
 
 Photos for your organization — [tinycld](https://tinycld.org/) feature package.
 
+## Features
+
+### Library & organization
+- Chronological photo grid grouped by day
+- Albums — create, rename, delete, add/remove photos
+- Tags — tag photos and filter by tag
+- Trash — soft-delete with restore and permanent delete
+- Upload queue with progress tracking
+- Configurable thumbnail quality (optimized / high)
+
+### People & faces
+- Automatic face detection using SCRFD (buffalo_l model)
+- Face recognition via 512-dim embeddings
+- Automated face clustering — detected faces are matched to existing people
+- Merge two people into one; split a person into two
+- People browser with per-person photo grid
+- Hidden people support (exclude from suggestions)
+
+### Semantic search & OCR
+- Natural-language semantic search powered by CLIP (ViT-B-16-SigLIP2 / ViT-B-32)
+- Text-in-image search via OCR (PaddleOCR detection + recognition models)
+- Filter by tags, date ranges, and people from the same search screen
+
+### Duplicate detection
+- Perceptual hash (pHash) computed for every photo
+- Duplicate finder groups visually similar photos by Hamming distance
+- In-app duplicate review and bulk delete
+
+### Location & map
+- EXIF GPS coordinates extracted on upload
+- Offline reverse geocoding (city/state/country) from embedded cities database
+- Map view clusters photos by location
+
+### Memories
+- Automatically surfaces "on this day" and curated sets
+
+### Video
+- Supports MP4, MOV, WebM, AVI, MKV
+- Thumbnail generation via ffmpeg at upload time
+- Duration and codec metadata stored via ffprobe
+
+### ML pipeline
+- Async job queue — face detection, CLIP encoding, OCR, pHash, geocoding run in the background
+- Configurable batch size and poll interval
+- GPU acceleration: CUDA (NVIDIA), CoreML (macOS/Apple Silicon), ROCm (AMD)
+- Models auto-downloaded from HuggingFace on first use and cached locally
+- ML settings screen: toggle OCR, tune face score thresholds, select CLIP model, trigger reprocess
+- Vector search via HNSW index (USearch) with brute-force SQLite fallback
+
 ## Development
 
 ```sh
