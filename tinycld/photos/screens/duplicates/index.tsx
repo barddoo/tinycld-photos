@@ -20,14 +20,10 @@ export default function DuplicatesScreen() {
     const bg = useThemeColor('background')
     const surface = useThemeColor('surface')
     const border = useThemeColor('border')
-    const destructive = useThemeColor('destructive')
+    const destructive = useThemeColor('danger')
 
     const [groups, setGroups] = useState<DuplicateGroupView[]>([])
     const [loading, setLoading] = useState(true)
-
-    useEffect(() => {
-        fetchDuplicates()
-    }, [])
 
     const fetchDuplicates = useCallback(async () => {
         try {
@@ -49,6 +45,10 @@ export default function DuplicatesScreen() {
             setLoading(false)
         }
     }, [])
+
+    useEffect(() => {
+        fetchDuplicates()
+    }, [fetchDuplicates])
 
     const handleDeleteGroup = useCallback(async (group: DuplicateGroupView) => {
         Alert.alert(
@@ -87,7 +87,7 @@ export default function DuplicatesScreen() {
                     </Text>
                     <Pressable
                         className="flex-row items-center gap-1 px-3 py-1 rounded-lg"
-                        style={{ backgroundColor: destructive + '20' }}
+                        style={{ backgroundColor: `${destructive}20` }}
                         onPress={() => handleDeleteGroup(item)}
                         accessibilityRole="button"
                         accessibilityLabel="Delete duplicates"

@@ -1,3 +1,4 @@
+import { getPreviewActionFactories } from '@tinycld/core/file-viewer/preview-action-registry'
 import {
     buildAuthedFileURL,
     getFileToken,
@@ -47,11 +48,9 @@ import Animated, {
     useAnimatedStyle,
     useSharedValue,
     withSpring,
-    withTiming,
 } from 'react-native-reanimated'
 import { useAlbumMutations } from '../hooks/useAlbumMutations'
 import { useAlbums } from '../hooks/useAlbums'
-import { getPreviewActionFactories } from '@tinycld/core/file-viewer/preview-action-registry'
 import { usePhotoMutations } from '../hooks/usePhotoMutations'
 import { usePhotos } from '../hooks/usePhotos'
 import { photoToSource } from '../lib/file-url'
@@ -158,7 +157,7 @@ function formatDuration(ms: number): string {
 
 function prefetchImage(
     source: { collectionId: string; recordId: string; fileName: string },
-    size: string
+    _size: string
 ) {
     if (!pb.authStore.isValid) return
     const token = pb.files.getToken?.()
@@ -311,7 +310,7 @@ export default function PhotoDetail() {
 
     useEffect(() => {
         preloadAdjacent()
-    }, [activeIndex, preloadAdjacent])
+    }, [preloadAdjacent])
 
     useEffect(() => {
         if (Platform.OS !== 'web') return
@@ -517,10 +516,7 @@ function ZoomableImage({
     const source = useMemo(() => photoToSource(photo), [photo])
     // Use original file (not pre-generated thumbnail) as the base for PocketBase's
     // on-the-fly resize, so the viewer always derives from the full-res original.
-    const viewerSource = useMemo(
-        () => ({ ...source, thumbnailFileName: undefined }),
-        [source]
-    )
+    const viewerSource = useMemo(() => ({ ...source, thumbnailFileName: undefined }), [source])
     const { url: thumbUrl, isLoading: thumbLoading } = useAuthedThumbnailURL(
         viewerSource,
         `${Math.round(width * 2)}x${Math.round(height * 2)}`
@@ -873,13 +869,7 @@ function RichInfoOverlay({
     )
 }
 
-function RegistryActionButtons({
-    photo,
-    onClose,
-}: {
-    photo: PhotoView
-    onClose: () => void
-}) {
+function RegistryActionButtons({ photo, onClose }: { photo: PhotoView; onClose: () => void }) {
     const actions = getPreviewActionFactories()
         .map(f => f())
         .filter(a => a.isApplicable?.(photoToSource(photo)) ?? true)
@@ -897,7 +887,6 @@ function RegistryActionButtons({
 
 function AlbumPickerModal({
     albums,
-    photoId,
     onAdd,
     onClose,
 }: {

@@ -21,7 +21,7 @@ export default function PersonDetailScreen() {
     const [photosStore] = useStore('photos_items')
 
     const { data: faces, isLoading: facesLoading } = useOrgLiveQuery(
-        (q, { orgId }) => q.from({ f: facesStore }).where(({ f }) => eq(f.person, id!)),
+        q => q.from({ f: facesStore }).where(({ f }) => eq(f.person, id ?? '')),
         [id]
     )
 

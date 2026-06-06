@@ -25,7 +25,7 @@ export default function AlbumsIndex() {
     const muted = useThemeColor('muted-foreground')
     const border = useThemeColor('border')
     const bg = useThemeColor('active-indicator')
-    const bgMuted = useThemeColor('muted-foreground')
+    const _bgMuted = useThemeColor('muted-foreground')
     const orgHref = useOrgHref()
 
     const { albums, coverPhotoMap, isLoading } = useAlbums()

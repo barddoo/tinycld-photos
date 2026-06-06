@@ -44,7 +44,7 @@ export default function TagPicker({ tags, selectedIds, onToggle, onCreate }: Pro
         <View className="gap-2">
             <View
                 className="flex-row items-center gap-2 rounded-lg px-3 py-2"
-                style={{ backgroundColor: border + '20', borderWidth: 1, borderColor: border }}
+                style={{ backgroundColor: `${border}20`, borderWidth: 1, borderColor: border }}
             >
                 <TextInput
                     value={query}

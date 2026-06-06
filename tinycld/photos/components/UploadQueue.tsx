@@ -23,9 +23,9 @@ import {
     clearAll,
     clearDone,
     getUploadState,
+    subscribeToUploads,
     type UploadEntry,
     type UploadStatus,
-    subscribeToUploads,
 } from '../stores/upload-store'
 
 const MAX_VISIBLE_ITEMS = 20
@@ -113,15 +113,25 @@ export default function UploadQueue({ onRetry }: Props) {
                         className="flex-row items-center justify-between px-4 py-3 border-b"
                         style={{ borderColor: border }}
                     >
-                        <Text style={{ color: fg, fontSize: 15, fontWeight: '600' }}>Upload Queue</Text>
+                        <Text style={{ color: fg, fontSize: 15, fontWeight: '600' }}>
+                            Upload Queue
+                        </Text>
                         <View className="flex-row items-center gap-3">
                             {done.length > 0 && (
-                                <Pressable onPress={clearDone} hitSlop={8} accessibilityLabel="Clear completed">
+                                <Pressable
+                                    onPress={clearDone}
+                                    hitSlop={8}
+                                    accessibilityLabel="Clear completed"
+                                >
                                     <Text style={{ color: muted, fontSize: 13 }}>Clear done</Text>
                                 </Pressable>
                             )}
                             {activeCount === 0 && (
-                                <Pressable onPress={clearAll} hitSlop={8} accessibilityLabel="Close queue">
+                                <Pressable
+                                    onPress={clearAll}
+                                    hitSlop={8}
+                                    accessibilityLabel="Close queue"
+                                >
                                     <X size={18} color={muted} />
                                 </Pressable>
                             )}
@@ -132,7 +142,14 @@ export default function UploadQueue({ onRetry }: Props) {
                             <UploadQueueRow key={e.id} entry={e} onRetry={onRetry} />
                         ))}
                         {overflowCount > 0 && (
-                            <Text style={{ color: muted, fontSize: 12, textAlign: 'center', paddingVertical: 8 }}>
+                            <Text
+                                style={{
+                                    color: muted,
+                                    fontSize: 12,
+                                    textAlign: 'center',
+                                    paddingVertical: 8,
+                                }}
+                            >
                                 ...and {overflowCount} more
                             </Text>
                         )}
@@ -180,7 +197,11 @@ export default function UploadQueue({ onRetry }: Props) {
                             </>
                         )}
                     </View>
-                    {expanded ? <ChevronDown size={18} color={muted} /> : <ChevronUp size={18} color={muted} />}
+                    {expanded ? (
+                        <ChevronDown size={18} color={muted} />
+                    ) : (
+                        <ChevronUp size={18} color={muted} />
+                    )}
                 </View>
             </Pressable>
         </View>
@@ -210,7 +231,11 @@ function UploadQueueRow({
                 <Text style={{ color: muted, fontSize: 12 }}>Uploading…</Text>
             )}
             {entry.status === 'failed' && (
-                <Pressable onPress={() => onRetry?.(entry)} hitSlop={8} accessibilityLabel="Retry upload">
+                <Pressable
+                    onPress={() => onRetry?.(entry)}
+                    hitSlop={8}
+                    accessibilityLabel="Retry upload"
+                >
                     <RefreshCw size={14} color="#3b82f6" />
                 </Pressable>
             )}

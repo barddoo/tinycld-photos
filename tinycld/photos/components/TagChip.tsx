@@ -20,8 +20,8 @@ export default function TagChip({ label, color, selected, onPress, onRemove }: P
             onPress={onPress}
             className={`flex-row items-center gap-1 px-3 py-1.5 rounded-full border ${selected ? 'border-transparent' : ''}`}
             style={{
-                backgroundColor: selected ? chipColor + '20' : 'transparent',
-                borderColor: selected ? chipColor : muted + '40',
+                backgroundColor: selected ? `${chipColor}20` : 'transparent',
+                borderColor: selected ? chipColor : `${muted}40`,
             }}
             accessibilityRole="button"
         >

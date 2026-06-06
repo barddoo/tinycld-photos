@@ -2,7 +2,17 @@ import { useBreakpoint } from '@tinycld/core/components/workspace/useBreakpoint'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { router, useGlobalSearchParams, usePathname } from 'expo-router'
-import { Clock, Grid3X3, Heart, Image, Map, Search, Tags, Trash2, Users } from 'lucide-react-native'
+import {
+    Clock,
+    Grid3X3,
+    Heart,
+    Image,
+    Map as MapIcon,
+    Search,
+    Tags,
+    Trash2,
+    Users,
+} from 'lucide-react-native'
 import { useCallback } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import type { ActiveSection } from './types'
@@ -24,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
 const NAV_DISCOVER: NavItem[] = [
     { section: 'people', label: 'People', icon: Users, route: 'photos/people' },
     { section: 'memories', label: 'Memories', icon: Clock, route: 'photos/memories' },
-    { section: 'map', label: 'Map', icon: Map, route: 'photos/map' },
+    { section: 'map', label: 'Map', icon: MapIcon, route: 'photos/map' },
 ]
 
 const NAV_EXTRA: NavItem[] = [
@@ -46,7 +56,7 @@ export default function PhotosSidebar() {
     const pathname = usePathname()
     const params = useGlobalSearchParams<{ section?: string }>()
     const orgHref = useOrgHref()
-    const isMobile = useBreakpoint() === 'mobile'
+    const _isMobile = useBreakpoint() === 'mobile'
 
     const currentSection = params.section
         ? (params.section as ActiveSection)

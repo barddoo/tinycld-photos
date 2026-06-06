@@ -16,7 +16,7 @@ interface LocationCluster {
 }
 
 export default function MapScreen() {
-    const navigation = useNavigation()
+    const _navigation = useNavigation()
     const [photoStore] = useStore('photos_items')
 
     const { data: raw, isLoading } = useOrgLiveQuery((q, { orgId }) =>
@@ -46,7 +46,8 @@ export default function MapScreen() {
                     count: 0,
                 })
             }
-            const cluster = clusterMap.get(loc)!
+            const cluster = clusterMap.get(loc)
+            if (!cluster) continue
             cluster.photos.push(photo)
             cluster.count++
         }

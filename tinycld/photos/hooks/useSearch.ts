@@ -2,10 +2,10 @@ import { eq } from '@tanstack/db'
 import { pb, useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PhotoItem, PhotoView } from '../types'
 import { photoToView } from '../lib/photo-utils'
-import { filterPhotosByText, mergeSearchResults } from '../lib/search-utils'
 import type { SemanticSearchResult } from '../lib/search-utils'
+import { filterPhotosByText, mergeSearchResults } from '../lib/search-utils'
+import type { PhotoItem, PhotoView } from '../types'
 
 interface UseSearchOptions {
     query: string

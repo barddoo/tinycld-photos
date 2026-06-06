@@ -113,7 +113,7 @@ describe('clearDone', () => {
     })
 
     it('leaves pending, uploading, and failed entries intact', () => {
-        const [id1, id2, id3] = enqueue([makeFile('a.jpg'), makeFile('b.jpg'), makeFile('c.jpg')])
+        const [id1, id2, _id3] = enqueue([makeFile('a.jpg'), makeFile('b.jpg'), makeFile('c.jpg')])
         updateStatus(id1, 'uploading')
         updateStatus(id2, 'failed')
         clearDone()

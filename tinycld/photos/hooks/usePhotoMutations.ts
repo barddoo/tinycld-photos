@@ -1,16 +1,11 @@
-import type PocketBase from 'pocketbase'
-
 import { queryClient, usePocketBase } from '@tinycld/core/lib/pocketbase'
+import type PocketBase from 'pocketbase'
 import { useCallback, useRef } from 'react'
 import { enqueue, getUploadState, updateStatus } from '../stores/upload-store'
 
 let processingPromise: Promise<void> | null = null
 
-async function processQueue(
-    pb: PocketBase,
-    orgId: string,
-    userOrgId: string
-): Promise<void> {
+async function processQueue(pb: PocketBase, orgId: string, userOrgId: string): Promise<void> {
     if (processingPromise) {
         await processingPromise
         return
@@ -24,11 +19,7 @@ async function processQueue(
     }
 }
 
-async function process(
-    pb: PocketBase,
-    orgId: string,
-    userOrgId: string
-): Promise<void> {
+async function process(pb: PocketBase, orgId: string, userOrgId: string): Promise<void> {
     const concurrency = 4
 
     while (true) {

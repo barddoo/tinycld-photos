@@ -74,7 +74,10 @@ describe('mergeSearchResults', () => {
     })
 
     it('semantic results come first', () => {
-        const semanticResults = [{ id: 'p3', score: 0.95 }, { id: 'p4', score: 0.8 }]
+        const semanticResults = [
+            { id: 'p3', score: 0.95 },
+            { id: 'p4', score: 0.8 },
+        ]
         const ftsResults = [allPhotos[0]]
         const merged = mergeSearchResults(allPhotos, semanticResults, ftsResults)
         expect(merged[0].id).toBe('p3')

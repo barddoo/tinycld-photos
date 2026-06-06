@@ -7,15 +7,14 @@ interface VideoPlayerState {
     isMuted: boolean
 }
 
-interface VideoPlayerActions {
-    play: () => void
-    pause: () => void
-    togglePlay: () => void
-    seek: (position: number) => void
-    toggleMute: () => void
-}
-
-export function useVideoPlayer(videoRef: React.RefObject<any>) {
+export function useVideoPlayer(
+    videoRef: React.RefObject<{
+        playAsync?: () => void
+        pauseAsync?: () => void
+        setPositionAsync?: (p: number) => void
+        setIsMutedAsync?: (m: boolean) => void
+    }>
+) {
     const [state, setState] = useState<VideoPlayerState>({
         isPlaying: false,
         position: 0,

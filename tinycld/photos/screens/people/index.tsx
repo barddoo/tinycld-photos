@@ -33,7 +33,8 @@ const PersonCard = memo(function PersonCard({ person, size, onPress }: PersonCar
               displayName: person.name,
               mimeType: 'image/jpeg',
               size: 0,
-              thumbnailFileName: person.thumbnailPhotoThumb || person.thumbnailPhotoFile || undefined,
+              thumbnailFileName:
+                  person.thumbnailPhotoThumb || person.thumbnailPhotoFile || undefined,
           }
         : undefined
 

@@ -65,7 +65,7 @@ export function formatDateLabel(dateStr: string): string {
     if (dateStr === todayStr) return 'Today'
     if (dateStr === yesterdayStr) return 'Yesterday'
 
-    const d = new Date(dateStr + 'T00:00:00')
+    const d = new Date(`${dateStr}T00:00:00`)
     return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 

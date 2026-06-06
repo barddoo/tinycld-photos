@@ -90,7 +90,11 @@ export function photoPerson(id: string, overrides: Partial<PhotosPerson> = {}): 
     }
 }
 
-export function photoFace(id: string, photoId: string, overrides: Partial<PhotosFace> = {}): PhotosFace {
+export function photoFace(
+    id: string,
+    photoId: string,
+    overrides: Partial<PhotosFace> = {}
+): PhotosFace {
     return {
         id,
         photo: photoId,

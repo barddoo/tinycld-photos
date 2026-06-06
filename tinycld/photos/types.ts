@@ -220,7 +220,7 @@ export type PhotosSchema = {
     }
     photos_ml_state: {
         type: PhotosMLState
-        relations: {}
+        relations: Record<string, never>
     }
     photos_job_queue: {
         type: PhotosJobQueue

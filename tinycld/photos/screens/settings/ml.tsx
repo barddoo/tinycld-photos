@@ -45,10 +45,6 @@ export default function MLSettings() {
     const [loading, setLoading] = useState(true)
     const [reprocessing, setReprocessing] = useState(false)
 
-    useEffect(() => {
-        fetchStatus()
-    }, [])
-
     const fetchStatus = useCallback(async () => {
         try {
             const resp = await pb.send('/api/photos/ml/status', { method: 'GET' })
@@ -77,6 +73,10 @@ export default function MLSettings() {
             setLoading(false)
         }
     }, [])
+
+    useEffect(() => {
+        fetchStatus()
+    }, [fetchStatus])
 
     const updateField = useCallback(<K extends keyof MLConfig>(key: K, value: MLConfig[K]) => {
         setConfig(prev => ({ ...prev, [key]: value }))
@@ -113,44 +113,40 @@ export default function MLSettings() {
     ])
 
     const handleReprocess = useCallback(async () => {
-		Alert.alert(
-			'Reprocess Photos',
-			'This will re-run ML processing on all photos. Continue?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Reprocess',
-                    onPress: async () => {
-                        setReprocessing(true)
-                        try {
-                            const resp = await pb.send('/api/photos/ml/reprocess', {
-                                method: 'POST',
-                                body: {
-                                    job_types: [
-                                        'detect_faces',
-                                        'encode_clip',
-                                        'run_ocr',
-                                        'compute_phash',
-                                        'reverse_geocode',
-                                    ],
-								status: 'all',
-                                },
-                            })
-                            const result = resp as { enqueued: number; photos: number }
-                            Alert.alert(
-                                'Done',
-                                `Enqueued ${result.enqueued} jobs for ${result.photos} photos`
-                            )
-                            fetchStatus()
-                        } catch {
-                            Alert.alert('Error', 'Failed to start reprocessing')
-                        } finally {
-                            setReprocessing(false)
-                        }
-                    },
+        Alert.alert('Reprocess Photos', 'This will re-run ML processing on all photos. Continue?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Reprocess',
+                onPress: async () => {
+                    setReprocessing(true)
+                    try {
+                        const resp = await pb.send('/api/photos/ml/reprocess', {
+                            method: 'POST',
+                            body: {
+                                job_types: [
+                                    'detect_faces',
+                                    'encode_clip',
+                                    'run_ocr',
+                                    'compute_phash',
+                                    'reverse_geocode',
+                                ],
+                                status: 'all',
+                            },
+                        })
+                        const result = resp as { enqueued: number; photos: number }
+                        Alert.alert(
+                            'Done',
+                            `Enqueued ${result.enqueued} jobs for ${result.photos} photos`
+                        )
+                        fetchStatus()
+                    } catch {
+                        Alert.alert('Error', 'Failed to start reprocessing')
+                    } finally {
+                        setReprocessing(false)
+                    }
                 },
-            ]
-        )
+            },
+        ])
     }, [fetchStatus])
 
     const Field = ({
@@ -334,7 +330,9 @@ export default function MLSettings() {
                 <View className="flex-row items-center gap-2 mb-1">
                     <View
                         className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: status?.engine_available ? '#4ade80' : '#f87171' }}
+                        style={{
+                            backgroundColor: status?.engine_available ? '#4ade80' : '#f87171',
+                        }}
                     />
                     <Text style={{ color: fg, fontSize: 14 }}>
                         {status?.settings?.usearch_index ? 'usearch' : 'Brute-force (in-process)'}

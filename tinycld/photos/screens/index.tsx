@@ -11,14 +11,7 @@ import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
-import {
-    Alert,
-    type LayoutChangeEvent,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    View,
-} from 'react-native'
+import { Alert, type LayoutChangeEvent, RefreshControl, ScrollView, View } from 'react-native'
 import DateSectionHeader from '../components/DateSectionHeader'
 import PhotoCard from '../components/PhotoCard'
 import TagChip from '../components/TagChip'
@@ -32,7 +25,7 @@ const GRID_GAP = 2
 const GRID_PADDING = 16
 
 const s = {
-    photoCell: (gap: number, padding: number) =>
+    photoCell: (gap: number, _padding: number) =>
         ({
             paddingHorizontal: gap / 2,
             paddingBottom: gap,
@@ -66,12 +59,12 @@ function useGridColumns(isMobile: boolean): GridLayoutInfo {
         if (width <= 0) return isMobile ? 3 : 4
         const inner = width - GRID_PADDING * 2
         return Math.max(2, Math.floor((inner + GRID_GAP) / (cardMin + GRID_GAP)))
-    }, [width, cardMin])
+    }, [width, cardMin, isMobile])
     const cardSize = useMemo(() => {
         if (width <= 0) return cardMin
         const inner = width - GRID_PADDING * 2
         return Math.floor((inner - (cols - 1) * GRID_GAP) / cols)
-    }, [width, cols])
+    }, [width, cols, cardMin])
     return { cols, cardSize, onLayout }
 }
 
@@ -87,7 +80,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
     const userOrgId = userOrg?.id ?? ''
     const orgHref = useOrgHref()
     const isMobile = useBreakpoint() === 'mobile'
-    const { photos, timeline, isLoading } = usePhotos(section)
+    const { timeline, isLoading } = usePhotos(section)
     const { uploadPhotos, restorePhoto, permanentlyDelete, retryUpload } = usePhotoMutations(
         orgId || '',
         userOrgId
@@ -197,7 +190,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
             }
             return null
         },
-        [cardSize, handlePhotoPress]
+        [cardSize, handlePhotoPress, section, handlePhotoLongPress]
     )
 
     const keyExtractor = useCallback((row: ListRow) => {

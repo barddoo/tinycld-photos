@@ -1,45 +1,45 @@
 {
-  "name": "@tinycld/photos",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "description": "Photos for your organization",
-  "exports": {
-    "./package.json": "./package.json",
-    "./manifest": "./manifest.ts",
-    "./types": "./tinycld/photos/types.ts",
-    "./collections": "./tinycld/photos/collections.ts",
-    "./screens/*": "./tinycld/photos/screens/*.tsx",
-    "./seed": "./tinycld/photos/seed.ts",
-    "./sidebar": "./tinycld/photos/sidebar.tsx",
-    "./provider": "./tinycld/photos/provider.tsx",
-    "./hooks/*": "./tinycld/photos/hooks/*.ts",
-    "./components/*": "./tinycld/photos/components/*.tsx",
-    "./stores/*": "./tinycld/photos/stores/*.ts",
-    "./lib/*": "./tinycld/photos/lib/*.ts",
-    "./settings/*": "./tinycld/photos/screens/settings/*.tsx"
-  },
-  "scripts": {
-    "typecheck": "tinycld-pkg typecheck",
-    "test": "tinycld-pkg test",
-    "test:e2e": "tinycld-pkg test:e2e",
-    "check": "tinycld-pkg check"
-  },
-  "devDependencies": {
-    "@tinycld/package-scripts": "workspace:*"
-  },
-  "peerDependencies": {
-    "@shopify/flash-list": "2.0.2",
-    "@tanstack/db": ">=0.6",
-    "@tanstack/react-db": ">=0.1",
-    "@tanstack/react-query": "^5.96.0",
-    "expo-haptics": "~55.0.14",
-    "expo-image": ">=55.0.0",
-    "expo-router": ">=55.0.0",
-    "lucide-react-native": "^1.7.0",
-    "pbtsdb": ">=0.5",
-    "pocketbase": "^0.26.8",
-    "react": ">=19",
-    "react-native": ">=0.83"
-  }
+    "name": "@tinycld/photos",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "Photos for your organization",
+    "exports": {
+        "./package.json": "./package.json",
+        "./manifest": "./manifest.ts",
+        "./types": "./tinycld/photos/types.ts",
+        "./collections": "./tinycld/photos/collections.ts",
+        "./screens/*": "./tinycld/photos/screens/*.tsx",
+        "./seed": "./tinycld/photos/seed.ts",
+        "./sidebar": "./tinycld/photos/sidebar.tsx",
+        "./provider": "./tinycld/photos/provider.tsx",
+        "./hooks/*": "./tinycld/photos/hooks/*.ts",
+        "./components/*": "./tinycld/photos/components/*.tsx",
+        "./stores/*": "./tinycld/photos/stores/*.ts",
+        "./lib/*": "./tinycld/photos/lib/*.ts",
+        "./settings/*": "./tinycld/photos/screens/settings/*.tsx"
+    },
+    "scripts": {
+        "typecheck": "tinycld-pkg typecheck",
+        "test": "tinycld-pkg test",
+        "test:e2e": "tinycld-pkg test:e2e",
+        "check": "tinycld-pkg check"
+    },
+    "devDependencies": {
+        "@tinycld/package-scripts": "workspace:*"
+    },
+    "peerDependencies": {
+        "@shopify/flash-list": "2.0.2",
+        "@tanstack/db": ">=0.6",
+        "@tanstack/react-db": ">=0.1",
+        "@tanstack/react-query": "^5.96.0",
+        "expo-haptics": "~55.0.14",
+        "expo-image": ">=55.0.0",
+        "expo-router": ">=55.0.0",
+        "lucide-react-native": "^1.7.0",
+        "pbtsdb": ">=0.5",
+        "pocketbase": "^0.26.8",
+        "react": ">=19",
+        "react-native": ">=0.83"
+    }
 }
