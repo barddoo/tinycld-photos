@@ -23,6 +23,11 @@ const manifest = {
             component: 'settings/ml',
             label: 'Photos ML',
         },
+        {
+            slug: 'photos-storage',
+            component: 'settings/storage',
+            label: 'Storage',
+        },
     ],
 }
 

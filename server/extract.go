@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"image"
-	"image/jpeg"
-	_ "image/gif"
-	_ "image/png"
 	_ "golang.org/x/image/webp"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
@@ -32,7 +33,20 @@ var supportedImageTypes = map[string]bool{
 	"image/tiff": true,
 }
 
-const maxThumbnailSize = 1024
+func thumbnailQualityMode(app *pocketbase.PocketBase, orgId string) string {
+	rec, err := app.FindFirstRecordByFilter(
+		"settings",
+		"org = {:org} && app = 'photos' && key = 'thumbnail_quality_mode'",
+		dbx.Params{"org": orgId},
+	)
+	if err != nil || rec == nil {
+		return "optimized"
+	}
+	if v, ok := rec.Get("value").(string); ok && v == "high" {
+		return "high"
+	}
+	return "optimized"
+}
 
 func extractImageMetadata(app *pocketbase.PocketBase, record *core.Record) {
 	if !appIsLive(app) {
@@ -89,6 +103,7 @@ func extractImageMetadata(app *pocketbase.PocketBase, record *core.Record) {
 	if isImage {
 		extractExifDate(tmpPath, record)
 		extractExifCamera(tmpPath, record)
+		extractExifGPS(tmpPath, record)
 
 		f, err := os.Open(tmpPath)
 		if err == nil {
@@ -119,7 +134,13 @@ func extractImageMetadata(app *pocketbase.PocketBase, record *core.Record) {
 	}
 
 	if isImage {
-		thumbnailPath, err := generateThumbnail(tmpPath, mimeType)
+		orgId := record.GetString("org")
+		mode := thumbnailQualityMode(app, orgId)
+		maxSize, quality := 1024, 75
+		if mode == "high" {
+			maxSize, quality = 2048, 92
+		}
+		thumbnailPath, err := generateThumbnail(tmpPath, mimeType, maxSize, quality)
 		if err != nil {
 			app.Logger().Debug("extractImageMetadata: thumbnail skipped", "id", record.Id, "mime", mimeType, "error", err)
 		} else if thumbnailPath != "" {
@@ -176,6 +197,13 @@ func extractImageMetadata(app *pocketbase.PocketBase, record *core.Record) {
 
 	if takenAt := record.GetDateTime("taken_at"); !takenAt.Time().IsZero() {
 		fresh.Set("taken_at", takenAt.Time())
+	}
+
+	if lat := record.GetFloat("latitude"); lat != 0 {
+		fresh.Set("latitude", lat)
+	}
+	if lon := record.GetFloat("longitude"); lon != 0 {
+		fresh.Set("longitude", lon)
 	}
 
 	if thumbFile := record.Get("thumbnail"); thumbFile != nil {
@@ -412,6 +440,204 @@ func extractExifCamera(path string, record *core.Record) {
 	}
 }
 
+func extractExifGPS(path string, record *core.Record) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	data := make([]byte, 2)
+	if _, err := f.Read(data); err != nil {
+		return
+	}
+	if data[0] != 0xFF || data[1] != 0xD8 {
+		return
+	}
+
+	buf := make([]byte, 65536)
+	n, err := f.Read(buf)
+	if err != nil {
+		return
+	}
+	buf = buf[:n]
+
+	offset := 0
+	for offset+8 < len(buf) {
+		if buf[offset] != 0xFF {
+			break
+		}
+		marker := buf[offset+1]
+		if marker == 0xE1 {
+			size := int(buf[offset+2])<<8 | int(buf[offset+3])
+			if offset+2+size > len(buf) {
+				break
+			}
+			exifStart := offset + 4
+			if exifStart+6 <= len(buf) && string(buf[exifStart:exifStart+6]) == "Exif\000\000" {
+				tiffStart := exifStart + 6
+				parseExifGPS(buf[tiffStart:], record)
+				return
+			}
+			offset += 2 + size
+		} else if marker == 0xE0 || marker == 0xE2 || marker == 0xDB || marker == 0xC4 || marker == 0xC0 || marker == 0xC2 || marker == 0xDA || marker == 0xDD || marker == 0xD9 {
+			if offset+4 > len(buf) {
+				break
+			}
+			size := int(buf[offset+2])<<8 | int(buf[offset+3])
+			offset += 2 + size
+		} else {
+			break
+		}
+	}
+}
+
+func parseExifGPS(data []byte, record *core.Record) {
+	if len(data) < 8 {
+		return
+	}
+
+	var order binary.ByteOrder
+	switch string(data[:2]) {
+	case "II":
+		order = binary.LittleEndian
+	case "MM":
+		order = binary.BigEndian
+	default:
+		return
+	}
+
+	if order.Uint16(data[2:4]) != 0x002A {
+		return
+	}
+
+	ifdOffset := int(order.Uint32(data[4:8]))
+	if ifdOffset < 8 || ifdOffset > len(data)-2 {
+		return
+	}
+
+	numEntries := order.Uint16(data[ifdOffset : ifdOffset+2])
+	entriesStart := ifdOffset + 2
+
+	var gpsIfdOffset int
+
+	for i := 0; i < int(numEntries); i++ {
+		entryOff := entriesStart + i*12
+		if entryOff+12 > len(data) {
+			break
+		}
+		tag := order.Uint16(data[entryOff : entryOff+2])
+		if tag == 0x8825 {
+			gpsIfdOffset = readValueOffset(data, entryOff, order)
+			break
+		}
+	}
+
+	if gpsIfdOffset <= 0 || gpsIfdOffset >= len(data) {
+		return
+	}
+
+	parseGPSIFD(data[gpsIfdOffset:], order, record)
+}
+
+func parseGPSIFD(data []byte, order binary.ByteOrder, record *core.Record) {
+	if len(data) < 2 {
+		return
+	}
+
+	numEntries := order.Uint16(data[:2])
+	entriesStart := 2
+
+	var latRef string
+	var latVals [3]float64
+	var lonRef string
+	var lonVals [3]float64
+	var hasLat, hasLon bool
+
+	for i := 0; i < int(numEntries); i++ {
+		entryOff := entriesStart + i*12
+		if entryOff+12 > len(data) {
+			break
+		}
+		tag := order.Uint16(data[entryOff : entryOff+2])
+
+		switch tag {
+		case 0x0001:
+			latRef = readGPSString(data, entryOff, order)
+		case 0x0002:
+			hasLat = readGPSRationalArray(data, entryOff, order, &latVals)
+		case 0x0003:
+			lonRef = readGPSString(data, entryOff, order)
+		case 0x0004:
+			hasLon = readGPSRationalArray(data, entryOff, order, &lonVals)
+		}
+	}
+
+	if hasLat {
+		lat := latVals[0] + latVals[1]/60.0 + latVals[2]/3600.0
+		if latRef == "S" {
+			lat = -lat
+		}
+		record.Set("latitude", lat)
+	}
+
+	if hasLon {
+		lon := lonVals[0] + lonVals[1]/60.0 + lonVals[2]/3600.0
+		if lonRef == "W" {
+			lon = -lon
+		}
+		record.Set("longitude", lon)
+	}
+}
+
+func readGPSString(data []byte, entryOff int, order binary.ByteOrder) string {
+	dataType := order.Uint16(data[entryOff+2 : entryOff+4])
+	count := order.Uint32(data[entryOff+4 : entryOff+8])
+
+	if dataType != 2 || count == 0 {
+		return ""
+	}
+
+	var str string
+	if count <= 4 {
+		str = string(data[entryOff+8 : entryOff+8+int(count)-1])
+	} else {
+		offset := int(order.Uint32(data[entryOff+8 : entryOff+12]))
+		if offset < 0 || offset+int(count) > len(data) {
+			return ""
+		}
+		str = string(data[offset : offset+int(count)-1])
+	}
+
+	return strings.TrimSpace(str)
+}
+
+func readGPSRationalArray(data []byte, entryOff int, order binary.ByteOrder, vals *[3]float64) bool {
+	dataType := order.Uint16(data[entryOff+2 : entryOff+4])
+	count := order.Uint32(data[entryOff+4 : entryOff+8])
+
+	if dataType != 5 || count < 3 {
+		return false
+	}
+
+	offset := int(order.Uint32(data[entryOff+8 : entryOff+12]))
+	if offset < 0 || offset+24 > len(data) {
+		return false
+	}
+
+	for i := 0; i < 3; i++ {
+		base := offset + i*8
+		num := order.Uint32(data[base : base+4])
+		den := order.Uint32(data[base+4 : base+8])
+		if den == 0 {
+			return false
+		}
+		vals[i] = float64(num) / float64(den)
+	}
+
+	return true
+}
+
 func parseExifCameraTags(data []byte, record *core.Record) {
 	if len(data) < 8 {
 		return
@@ -581,14 +807,14 @@ func readExifRational(data []byte, entryOff int, order binary.ByteOrder) float64
 	return float64(numerator) / float64(denominator)
 }
 
-func generateThumbnail(srcPath, mimeType string) (string, error) {
+func generateThumbnail(srcPath, mimeType string, maxSize, quality int) (string, error) {
 	if !supportedImageTypes[mimeType] {
 		return "", nil
 	}
 
 	isHEIC := mimeType == "image/heic" || mimeType == "image/heif"
 	if isHEIC {
-		return generateHEICThumbnail(srcPath)
+		return generateHEICThumbnail(srcPath, maxSize, quality)
 	}
 
 	if mimeType == "image/avif" || mimeType == "image/tiff" {
@@ -613,7 +839,7 @@ func generateThumbnail(srcPath, mimeType string) (string, error) {
 		return "", nil
 	}
 
-	newW, newH := calcThumbSize(w, h, maxThumbnailSize)
+	newW, newH := calcThumbSize(w, h, maxSize)
 	if newW >= w && newH >= h {
 		return "", nil
 	}
@@ -622,7 +848,7 @@ func generateThumbnail(srcPath, mimeType string) (string, error) {
 	draw.CatmullRom.Scale(dst, dst.Bounds(), srcImg, srcImg.Bounds(), draw.Over, nil)
 
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 92}); err != nil {
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: quality}); err != nil {
 		return "", err
 	}
 
@@ -641,7 +867,7 @@ func generateThumbnail(srcPath, mimeType string) (string, error) {
 	return thumbFile.Name(), nil
 }
 
-func generateHEICThumbnail(srcPath string) (string, error) {
+func generateHEICThumbnail(srcPath string, maxSize, quality int) (string, error) {
 	ctx, err := heif.NewContext()
 	if err != nil {
 		return "", fmt.Errorf("heif new context: %w", err)
@@ -673,7 +899,7 @@ func generateHEICThumbnail(srcPath string) (string, error) {
 		return "", nil
 	}
 
-	newW, newH := calcThumbSize(w, h, maxThumbnailSize)
+	newW, newH := calcThumbSize(w, h, maxSize)
 	if newW >= w && newH >= h {
 		return "", nil
 	}
@@ -682,7 +908,7 @@ func generateHEICThumbnail(srcPath string) (string, error) {
 	draw.CatmullRom.Scale(dst, dst.Bounds(), srcImg, srcImg.Bounds(), draw.Over, nil)
 
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 92}); err != nil {
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: quality}); err != nil {
 		return "", err
 	}
 

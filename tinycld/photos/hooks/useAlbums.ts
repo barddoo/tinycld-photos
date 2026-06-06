@@ -2,9 +2,8 @@ import { eq, inArray } from '@tanstack/db'
 import { useStore } from '@tinycld/core/lib/pocketbase'
 import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { useMemo } from 'react'
-import type { PhotoAlbum, PhotoItem } from '../types'
-import type { AlbumView, PhotoView } from '../types'
-import { photoToView } from './usePhotos'
+import type { AlbumView, PhotoAlbum, PhotoItem, PhotoView } from '../types'
+import { photoToView, toPhotoViews } from './usePhotos'
 
 function albumToView(album: PhotoAlbum, count: number): AlbumView {
     return {
@@ -23,23 +22,19 @@ export function useAlbums() {
     const [albumItemsCollection] = useStore('photos_album_items')
     const [photosCollection] = useStore('photos_items')
 
-    const { data: rawAlbums, isLoading: albumsLoading } = useOrgLiveQuery(
-        (query, { orgId }) =>
-            query
-                .from({ a: albumsCollection })
-                .where(({ a }) => eq(a.org, orgId))
-                .orderBy(({ a }) => a.updated, 'desc'),
+    const { data: rawAlbums, isLoading: albumsLoading } = useOrgLiveQuery((query, { orgId }) =>
+        query
+            .from({ a: albumsCollection })
+            .where(({ a }) => eq(a.org, orgId))
+            .orderBy(({ a }) => a.updated, 'desc')
     )
 
-    const { data: rawAlbumItems } = useOrgLiveQuery(
-        (query) => query.from({ ai: albumItemsCollection }),
+    const { data: rawAlbumItems } = useOrgLiveQuery(query =>
+        query.from({ ai: albumItemsCollection })
     )
 
-    const { data: rawPhotos } = useOrgLiveQuery(
-        (query, { orgId }) =>
-            query
-                .from({ p: photosCollection })
-                .where(({ p }) => eq(p.org, orgId)),
+    const { data: rawPhotos } = useOrgLiveQuery((query, { orgId }) =>
+        query.from({ p: photosCollection }).where(({ p }) => eq(p.org, orgId))
     )
 
     const coverPhotoMap = useMemo(() => {
@@ -61,10 +56,7 @@ export function useAlbums() {
     }, [rawAlbumItems])
 
     const albums = useMemo<AlbumView[]>(
-        () =>
-            (rawAlbums ?? []).map(a =>
-                albumToView(a, photoCounts.get(a.id) ?? 0)
-            ),
+        () => (rawAlbums ?? []).map(a => albumToView(a, photoCounts.get(a.id) ?? 0)),
         [rawAlbums, photoCounts]
     )
 
@@ -76,12 +68,12 @@ export function useAlbumPhotos(albumId: string) {
     const [albumItemsCollection] = useStore('photos_album_items')
 
     const { data: albumItems } = useOrgLiveQuery(
-        (query) =>
+        query =>
             query
                 .from({ ai: albumItemsCollection })
                 .where(({ ai }) => eq(ai.album, albumId))
                 .orderBy(({ ai }) => ai.sort_order, 'asc'),
-        [albumId],
+        [albumId]
     )
 
     const photoIds = useMemo(
@@ -91,21 +83,16 @@ export function useAlbumPhotos(albumId: string) {
 
     const { data: albumPhotos, isLoading } = useOrgLiveQuery(
         (query, { orgId }) => {
-            const base = query
-                .from({ p: itemsCollection })
-                .where(({ p }) => eq(p.org, orgId))
+            const base = query.from({ p: itemsCollection }).where(({ p }) => eq(p.org, orgId))
             if (photoIds.length > 0) {
                 return base.where(({ p }) => inArray(p.id, photoIds))
             }
-            return base
+            return base.where(({ p }) => eq(p.id, '__empty_album__'))
         },
-        [photoIds],
+        [photoIds]
     )
 
-    const photos = useMemo<PhotoView[]>(
-        () => (albumPhotos ?? []).map(photoToView),
-        [albumPhotos]
-    )
+    const photos = useMemo<PhotoView[]>(() => toPhotoViews(albumPhotos), [albumPhotos])
 
     return { photos, isLoading }
 }

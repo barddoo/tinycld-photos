@@ -1,27 +1,190 @@
-import { useAuthedFileURL } from '@tinycld/core/file-viewer/use-authed-file-url'
-import { useAuthedThumbnailURL } from '@tinycld/core/file-viewer/use-authed-file-url'
-import { getFileToken } from '@tinycld/core/file-viewer/use-authed-file-url'
-import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
+import {
+    buildAuthedFileURL,
+    getFileToken,
+    useAuthedFileURL,
+    useAuthedThumbnailURL,
+} from '@tinycld/core/file-viewer/use-authed-file-url'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
+import { pb } from '@tinycld/core/lib/pocketbase'
+import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
-import { router, useLocalSearchParams } from 'expo-router'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { ArrowLeft, BookmarkPlus, Download, Heart, Info, MapPin, Play, Share2, Trash2, X, RotateCcw } from 'lucide-react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS, withTiming } from 'react-native-reanimated'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native'
 import * as Haptics from 'expo-haptics'
-import { photoToSource } from '../lib/file-url'
+import { Image as ExpoImage } from 'expo-image'
+import { router, useLocalSearchParams } from 'expo-router'
+import {
+    ArrowLeft,
+    BookmarkPlus,
+    Download,
+    Heart,
+    Info,
+    MapPin,
+    Play,
+    RotateCcw,
+    Share2,
+    Trash2,
+    X,
+} from 'lucide-react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+    ActivityIndicator,
+    FlatList,
+    Image,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    Share,
+    Text,
+    TextInput,
+    useWindowDimensions,
+    View,
+} from 'react-native'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import Animated, {
+    createAnimatedComponent,
+    runOnJS,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming,
+} from 'react-native-reanimated'
 import { useAlbumMutations } from '../hooks/useAlbumMutations'
 import { useAlbums } from '../hooks/useAlbums'
 import { usePhotoMutations } from '../hooks/usePhotoMutations'
 import { usePhotos } from '../hooks/usePhotos'
+import { photoToSource } from '../lib/file-url'
 import type { PhotoView } from '../types'
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
+const AnimatedImage = createAnimatedComponent(ExpoImage)
+
+// Hoisted static styles
+const s = {
+    screen: { flex: 1, backgroundColor: '#000' } as const,
+    topBar: { backgroundColor: 'rgba(0,0,0,0.4)' } as const,
+    infoOverlay: { backgroundColor: 'rgba(0,0,0,0.9)' } as const,
+    centerBase: { justifyContent: 'center' as const, alignItems: 'center' as const } as const,
+    mediaBase: { justifyContent: 'center' as const, alignItems: 'center' as const } as const,
+    videoBase: { backgroundColor: '#000' } as const,
+    playButton: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+    } as const,
+    durationBadge: {
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        borderRadius: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    } as const,
+    modalOverlay: {
+        flex: 1,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        paddingHorizontal: 24,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    } as const,
+    modalContent: {
+        width: '100%',
+        maxWidth: 448,
+        borderRadius: 12,
+        padding: 20,
+        gap: 12,
+        backgroundColor: '#1c1c1e',
+    } as const,
+    albumItem: {
+        paddingVertical: 12,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(55,65,81,0.5)',
+    } as const,
+    emptyAlbums: {
+        color: '#666',
+        fontSize: 14,
+        textAlign: 'center' as const,
+        paddingVertical: 12,
+    } as const,
+    cancelText: { color: '#9ca3af', fontSize: 14 } as const,
+    input: {
+        backgroundColor: '#333',
+        minHeight: 60,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    } as const,
+    saveButton: {
+        backgroundColor: '#60a5fa',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        alignSelf: 'flex-end' as const,
+    } as const,
+    actionButton: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(75,85,99,1)',
+    } as const,
+    disabledButton: { opacity: 0.5 } as const,
+    infoTitle: { color: '#fff', fontSize: 17, fontWeight: '600' } as const,
+    infoDate: { color: '#9ca3af', fontSize: 12 } as const,
+    infoLabel: { color: '#9ca3af', fontSize: 12, marginBottom: 4 } as const,
+    editLink: { color: '#60a5fa', fontSize: 12 } as const,
+} as const
+
+function formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`
+}
+
+function formatDuration(ms: number): string {
+    const totalSec = Math.floor(ms / 1000)
+    const min = Math.floor(totalSec / 60)
+    const sec = totalSec % 60
+    return `${min}:${sec.toString().padStart(2, '0')}`
+}
+
+function prefetchImage(
+    source: { collectionId: string; recordId: string; fileName: string },
+    size: string
+) {
+    if (!pb.authStore.isValid) return
+    const token = pb.files.getToken?.()
+    if (!token) return
+    const url = pb.files.getURL(
+        { collectionId: source.collectionId, id: source.recordId },
+        source.fileName,
+        { token }
+    )
+    if (Platform.OS === 'web') {
+        const link = document.createElement('link')
+        link.rel = 'prefetch'
+        link.href = url
+        document.head.appendChild(link)
+    }
+    Image.prefetch(url)
+}
 
 export default function PhotoDetail() {
     const { id } = useLocalSearchParams<{ id: string }>()
+    const windowDimensions = useWindowDimensions()
+    const [viewerSize, setViewerSize] = useState({
+        width: windowDimensions.width,
+        height: windowDimensions.height,
+    })
+    const screenWidth = Math.max(1, viewerSize.width)
+    const screenHeight = Math.max(1, viewerSize.height)
     const { orgSlug, orgId } = useOrgInfo()
     const userOrg = useCurrentUserOrg(orgSlug)
     const userOrgId = userOrg?.id ?? ''
@@ -34,7 +197,8 @@ export default function PhotoDetail() {
     const flatListRef = useRef<FlatList<PhotoView>>(null)
 
     const photo = allPhotos[activeIndex]
-    const { toggleFavorite, trashPhoto, restorePhoto, permanentlyDelete, updateDescription } = usePhotoMutations(orgId, userOrgId)
+    const { toggleFavorite, trashPhoto, restorePhoto, permanentlyDelete, updateDescription } =
+        usePhotoMutations(orgId, userOrgId)
     const { albums } = useAlbums()
     const { addPhotoToAlbum } = useAlbumMutations(orgId, userOrgId)
 
@@ -52,31 +216,34 @@ export default function PhotoDetail() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     }, [])
 
+    const photoId = photo?.id
+    const photoIsFavorite = photo?.isFavorite
+
     const handleToggleFavorite = useCallback(async () => {
-        if (!photo) return
+        if (!photoId) return
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-        await toggleFavorite(photo.id, photo.isFavorite)
-    }, [photo, toggleFavorite])
+        await toggleFavorite(photoId, photoIsFavorite)
+    }, [photoId, photoIsFavorite, toggleFavorite])
 
     const handleTrash = useCallback(async () => {
-        if (!photo) return
+        if (!photoId) return
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-        await trashPhoto(photo.id)
+        await trashPhoto(photoId)
         handleBack()
-    }, [photo, trashPhoto, handleBack])
+    }, [photoId, trashPhoto, handleBack])
 
     const handleRestore = useCallback(async () => {
-        if (!photo) return
-        await restorePhoto(photo.id)
+        if (!photoId) return
+        await restorePhoto(photoId)
         handleBack()
-    }, [photo, restorePhoto, handleBack])
+    }, [photoId, restorePhoto, handleBack])
 
     const handlePermanentDelete = useCallback(async () => {
-        if (!photo) return
+        if (!photoId) return
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-        await permanentlyDelete(photo.id)
+        await permanentlyDelete(photoId)
         handleBack()
-    }, [photo, permanentlyDelete, handleBack])
+    }, [photoId, permanentlyDelete, handleBack])
 
     const handleDownload = useCallback(async () => {
         if (!photo) return
@@ -84,7 +251,9 @@ export default function PhotoDetail() {
         try {
             const token = await getFileToken()
             if (!token) return
-            const url = buildAuthedFileURL(photo, token)
+            const source = photoToSource(photo)
+            const url = buildAuthedFileURL(source, token)
+            if (!url) return
             if (Platform.OS === 'web') {
                 const a = document.createElement('a')
                 a.href = url
@@ -105,7 +274,8 @@ export default function PhotoDetail() {
         const source = photoToSource(photo)
         const token = await getFileToken()
         if (!token) return
-        const url = buildAuthedFileURL(photo, token)
+        const url = buildAuthedFileURL(source, token)
+        if (!url) return
         try {
             await Share.share({
                 title: photo.name,
@@ -117,21 +287,26 @@ export default function PhotoDetail() {
         }
     }, [photo])
 
-    const onMomentumEnd = useCallback((e: { nativeEvent: { contentOffset: { x: number } } }) => {
-        const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH)
-        setActiveIndex(index)
-    }, [])
+    const onMomentumEnd = useCallback(
+        (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+            const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth)
+            setActiveIndex(index)
+        },
+        [screenWidth]
+    )
 
     const preloadAdjacent = useCallback(() => {
-        const indices = [activeIndex - 1, activeIndex + 1].filter(i => i >= 0 && i < allPhotos.length)
+        const indices = [activeIndex - 1, activeIndex + 1].filter(
+            i => i >= 0 && i < allPhotos.length
+        )
         for (const i of indices) {
             const p = allPhotos[i]
             if (p) {
                 const src = photoToSource(p)
-                prefetchImage(src, `${SCREEN_WIDTH * 2}x${SCREEN_HEIGHT * 2}`)
+                prefetchImage(src, `${Math.round(screenWidth * 2)}x${Math.round(screenHeight * 2)}`)
             }
         }
-    }, [activeIndex, allPhotos])
+    }, [activeIndex, allPhotos, screenWidth, screenHeight])
 
     useEffect(() => {
         preloadAdjacent()
@@ -160,24 +335,86 @@ export default function PhotoDetail() {
         return () => window.removeEventListener('keydown', handleKey)
     }, [activeIndex, allPhotos.length, handleBack, handleToggleFavorite, handleToggleInfo])
 
-    const renderPhoto = useCallback(({ item }: { item: PhotoView }) => {
-        if (item.type === 'video') {
-            return <VideoPlayerInline photo={item} />
-        }
-        return (
-            <ZoomableImage
-                photo={item}
-                onZoomChange={setScrollEnabled}
-                onTap={handleToggleInfo}
-                onSwipeDown={handleBack}
-                onSwipeUp={handleToggleFavorite}
-            />
-        )
-    }, [handleToggleInfo, handleBack, handleToggleFavorite, setScrollEnabled])
+    const handleSetScrollEnabled = useCallback((zoomed: boolean) => {
+        setScrollEnabled(!zoomed)
+    }, [])
+
+    const handleLayout = useCallback(
+        (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
+            const { width, height } = event.nativeEvent.layout
+            setViewerSize(prev => {
+                if (
+                    Math.round(prev.width) === Math.round(width) &&
+                    Math.round(prev.height) === Math.round(height)
+                )
+                    return prev
+                return { width, height }
+            })
+        },
+        []
+    )
+
+    const renderPhoto = useCallback(
+        ({ item }: { item: PhotoView }) => {
+            if (item.type === 'video') {
+                return <VideoPlayerInline photo={item} width={screenWidth} height={screenHeight} />
+            }
+            return (
+                <ZoomableImage
+                    photo={item}
+                    width={screenWidth}
+                    height={screenHeight}
+                    onZoomChange={handleSetScrollEnabled}
+                    onTap={handleToggleInfo}
+                    onSwipeDown={handleBack}
+                    onSwipeUp={handleToggleFavorite}
+                />
+            )
+        },
+        [
+            handleToggleInfo,
+            handleBack,
+            handleToggleFavorite,
+            handleSetScrollEnabled,
+            screenWidth,
+            screenHeight,
+        ]
+    )
+
+    const getItemLayoutFn = useCallback(
+        (_data: ArrayLike<PhotoView> | null | undefined, index: number) => ({
+            length: screenWidth,
+            offset: screenWidth * index,
+            index,
+        }),
+        [screenWidth]
+    )
+
+    const keyExtractorFn = useCallback((p: PhotoView) => p.id, [])
+
+    const handleCloseInfo = useCallback(() => setShowInfo(false), [])
+    const handleOpenAlbumPicker = useCallback(() => setShowAlbumPicker(true), [])
+    const handleUpdateDescription = useCallback(
+        (desc: string) => {
+            if (photo) updateDescription(photo.id, desc)
+        },
+        [photo, updateDescription]
+    )
+    const handleAddToAlbum = useCallback(
+        async (albumId: string) => {
+            if (photo) {
+                await addPhotoToAlbum(albumId, photo.id)
+                setShowAlbumPicker(false)
+            }
+        },
+        [photo, addPhotoToAlbum]
+    )
+    const handleCloseAlbumPicker = useCallback(() => setShowAlbumPicker(false), [])
 
     return (
-        <View className="flex-1" style={{ backgroundColor: '#000' }}>
+        <View style={s.screen} onLayout={handleLayout}>
             <FlatList<PhotoView>
+                key={`${Math.round(screenWidth)}x${Math.round(screenHeight)}`}
                 ref={flatListRef}
                 data={allPhotos}
                 horizontal
@@ -185,16 +422,9 @@ export default function PhotoDetail() {
                 showsHorizontalScrollIndicator={false}
                 scrollEnabled={scrollEnabled}
                 onMomentumScrollEnd={onMomentumEnd}
-                initialScrollIndex={Math.max(0, initialIndex)}
-                getItemLayout={useCallback(
-                    (data: ArrayLike<PhotoView> | null | undefined, index: number) => ({
-                        length: SCREEN_WIDTH,
-                        offset: SCREEN_WIDTH * index,
-                        index,
-                    }),
-                    []
-                )}
-                keyExtractor={useCallback((p: PhotoView) => p.id, [])}
+                initialScrollIndex={activeIndex}
+                getItemLayout={getItemLayoutFn}
+                keyExtractor={keyExtractorFn}
                 renderItem={renderPhoto}
                 maxToRenderPerBatch={5}
                 windowSize={5}
@@ -203,9 +433,14 @@ export default function PhotoDetail() {
 
             <View
                 className="absolute top-0 left-0 right-0 flex-row items-center justify-between px-4 pt-12 pb-3"
-                style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+                style={s.topBar}
             >
-                <Pressable onPress={handleBack} className="p-2" accessibilityRole="button" accessibilityLabel="Back">
+                <Pressable
+                    onPress={handleBack}
+                    className="p-2"
+                    accessibilityRole="button"
+                    accessibilityLabel="Back"
+                >
                     <ArrowLeft size={24} color="#fff" />
                 </Pressable>
                 <Text
@@ -215,50 +450,57 @@ export default function PhotoDetail() {
                 >
                     {photo?.name ?? ''}
                 </Text>
-                <Pressable onPress={handleToggleInfo} className="p-2" accessibilityRole="button" accessibilityLabel="Photo info">
+                <Pressable
+                    onPress={handleToggleInfo}
+                    className="p-2"
+                    accessibilityRole="button"
+                    accessibilityLabel="Photo info"
+                >
                     <Info size={22} color={showInfo ? '#60a5fa' : '#fff'} />
                 </Pressable>
             </View>
 
-            {showInfo && photo && (
+            {showInfo && photo ? (
                 <RichInfoOverlay
                     photo={photo}
-                    onClose={() => setShowInfo(false)}
+                    screenHeight={screenHeight}
+                    onClose={handleCloseInfo}
                     onToggleFavorite={handleToggleFavorite}
                     onTrash={handleTrash}
                     onRestore={handleRestore}
                     onPermanentDelete={handlePermanentDelete}
                     onDownload={handleDownload}
                     onShare={handleShare}
-                    onUpdateDescription={(desc) => updateDescription(photo.id, desc)}
-                    onAddToAlbum={() => setShowAlbumPicker(true)}
+                    onUpdateDescription={handleUpdateDescription}
+                    onAddToAlbum={handleOpenAlbumPicker}
                     isDownloading={isDownloading}
                 />
-            )}
+            ) : null}
 
-            {showAlbumPicker && photo && (
+            {showAlbumPicker && photo ? (
                 <AlbumPickerModal
                     albums={albums}
                     photoId={photo.id}
-                    onAdd={async (albumId) => {
-                        await addPhotoToAlbum(albumId, photo.id)
-                        setShowAlbumPicker(false)
-                    }}
-                    onClose={() => setShowAlbumPicker(false)}
+                    onAdd={handleAddToAlbum}
+                    onClose={handleCloseAlbumPicker}
                 />
-            )}
+            ) : null}
         </View>
     )
 }
 
 function ZoomableImage({
     photo,
+    width,
+    height,
     onZoomChange,
     onTap,
     onSwipeDown,
     onSwipeUp,
 }: {
     photo: PhotoView
+    width: number
+    height: number
     onZoomChange: (zoomed: boolean) => void
     onTap: () => void
     onSwipeDown: () => void
@@ -270,21 +512,26 @@ function ZoomableImage({
     const translateY = useSharedValue(0)
     const savedTranslateX = useSharedValue(0)
     const savedTranslateY = useSharedValue(0)
-    const isPinching = useSharedValue(false)
 
     const source = useMemo(() => photoToSource(photo), [photo])
-    const { url: thumbUrl, isLoading: thumbLoading } = useAuthedThumbnailURL(source, `${SCREEN_WIDTH * 2}x${SCREEN_HEIGHT * 2}`)
+    const { url: thumbUrl, isLoading: thumbLoading } = useAuthedThumbnailURL(
+        source,
+        `${Math.round(width * 2)}x${Math.round(height * 2)}`
+    )
     const { url: fullUrl } = useAuthedFileURL(source)
 
-    const [imageLoaded, setImageLoaded] = useState(false)
+    const [imageError, setImageError] = useState(false)
     const [useFullRes, setUseFullRes] = useState(false)
 
-    const handleZoomChange = useCallback((zoomed: boolean) => {
-        onZoomChange(!zoomed)
-        if (zoomed) {
-            setUseFullRes(true)
-        }
-    }, [onZoomChange])
+    const handleZoomChange = useCallback(
+        (zoomed: boolean) => {
+            onZoomChange(!zoomed)
+            if (zoomed) {
+                setUseFullRes(true)
+            }
+        },
+        [onZoomChange]
+    )
 
     const handleSwipeDown = useCallback(() => {
         onSwipeDown()
@@ -303,19 +550,17 @@ function ZoomableImage({
 
     const pinchGesture = Gesture.Pinch()
         .onStart(() => {
-            isPinching.value = true
-            savedScale.value = scale.value
+            savedScale.set(scale.value)
         })
-        .onUpdate((e) => {
+        .onUpdate(e => {
             const newScale = Math.max(1, Math.min(8, savedScale.value * e.scale))
-            scale.value = newScale
+            scale.set(newScale)
         })
         .onEnd(() => {
-            isPinching.value = false
             if (scale.value <= 1.1) {
-                scale.value = withSpring(1)
-                translateX.value = withSpring(0)
-                translateY.value = withSpring(0)
+                scale.set(withSpring(1))
+                translateX.set(withSpring(0))
+                translateY.set(withSpring(0))
                 runOnJS(handleZoomChange)(false)
             } else {
                 runOnJS(handleZoomChange)(true)
@@ -326,33 +571,43 @@ function ZoomableImage({
     const panGesture = Gesture.Pan()
         .minPointers(1)
         .onStart(() => {
-            savedTranslateX.value = translateX.value
-            savedTranslateY.value = translateY.value
+            savedTranslateX.set(translateX.value)
+            savedTranslateY.set(translateY.value)
         })
-        .onUpdate((e) => {
+        .onUpdate(e => {
             if (scale.value > 1.1) {
-                const maxOffset = (scale.value - 1) * SCREEN_WIDTH / 2
-                translateX.value = Math.max(-maxOffset, Math.min(maxOffset, savedTranslateX.value + e.translationX))
-                const maxOffsetY = (scale.value - 1) * SCREEN_HEIGHT / 2
-                translateY.value = Math.max(-maxOffsetY, Math.min(maxOffsetY, savedTranslateY.value + e.translationY))
+                const maxOffset = ((scale.value - 1) * width) / 2
+                translateX.set(
+                    Math.max(
+                        -maxOffset,
+                        Math.min(maxOffset, savedTranslateX.value + e.translationX)
+                    )
+                )
+                const maxOffsetY = ((scale.value - 1) * height) / 2
+                translateY.set(
+                    Math.max(
+                        -maxOffsetY,
+                        Math.min(maxOffsetY, savedTranslateY.value + e.translationY)
+                    )
+                )
             } else {
-                translateX.value = e.translationX
-                translateY.value = e.translationY
+                translateX.set(e.translationX)
+                translateY.set(e.translationY)
             }
         })
-        .onEnd((e) => {
+        .onEnd(e => {
             if (scale.value <= 1.1) {
                 if (e.translationY < -80 && Math.abs(e.translationX) < 50) {
                     runOnJS(handleSwipeUp)()
                 } else if (e.translationY > 100 && Math.abs(e.translationX) < 50) {
                     runOnJS(handleSwipeDown)()
                 } else {
-                    translateX.value = withSpring(0)
-                    translateY.value = withSpring(0)
+                    translateX.set(withSpring(0))
+                    translateY.set(withSpring(0))
                 }
             } else {
-                translateX.value = withSpring(translateX.value)
-                translateY.value = withSpring(translateY.value)
+                translateX.set(withSpring(translateX.value))
+                translateY.set(withSpring(translateY.value))
             }
         })
 
@@ -376,7 +631,7 @@ function ZoomableImage({
 
     if (thumbLoading || !thumbUrl) {
         return (
-            <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={[s.centerBase, { width, height }]}>
                 <ActivityIndicator size="large" color="#666" />
             </View>
         )
@@ -384,13 +639,20 @@ function ZoomableImage({
 
     return (
         <GestureDetector gesture={composed}>
-            <Animated.View style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, justifyContent: 'center', alignItems: 'center' }]}>
-                <Animated.Image
+            <Animated.View style={[s.mediaBase, { width, height }]}>
+                <AnimatedImage
                     source={{ uri: displayUrl }}
-                    style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, animatedStyle]}
-                    resizeMode="contain"
-                    onLoad={() => setImageLoaded(true)}
+                    style={[{ width, height }, animatedStyle]}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                    recyclingKey={photo.id}
+                    onError={() => setImageError(true)}
                 />
+                {imageError && (
+                    <View style={s.centerBase} className="absolute inset-0">
+                        <Text className="text-gray-400 text-center px-8">Failed to load image</Text>
+                    </View>
+                )}
             </Animated.View>
         </GestureDetector>
     )
@@ -398,6 +660,7 @@ function ZoomableImage({
 
 function RichInfoOverlay({
     photo,
+    screenHeight,
     onClose,
     onToggleFavorite,
     onTrash,
@@ -410,6 +673,7 @@ function RichInfoOverlay({
     isDownloading,
 }: {
     photo: PhotoView
+    screenHeight: number
     onClose: () => void
     onToggleFavorite: () => void
     onTrash: () => void
@@ -441,40 +705,52 @@ function RichInfoOverlay({
         setEditingDesc(false)
     }, [descDraft, onUpdateDescription])
 
-    const formatBytes = (bytes: number): string => {
-        if (bytes === 0) return '0 B'
-        const k = 1024
-        const sizes = ['B', 'KB', 'MB', 'GB']
-        const i = Math.floor(Math.log(bytes) / Math.log(k))
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
-    }
+    const handleToggleEditDesc = useCallback(() => {
+        setEditingDesc(prev => !prev)
+    }, [])
+
+    const hasExif = !!(
+        photo.cameraMake ||
+        photo.cameraModel ||
+        photo.iso ||
+        photo.aperture ||
+        photo.focalLength ||
+        photo.lensModel
+    )
 
     return (
         <View
             className="absolute bottom-0 left-0 right-0"
-            style={{ backgroundColor: 'rgba(0,0,0,0.9)', maxHeight: SCREEN_HEIGHT * 0.65 }}
+            style={[s.infoOverlay, { maxHeight: screenHeight * 0.65 }]}
         >
             <View className="flex-row items-center justify-between px-4 pt-3 pb-2">
-                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Info</Text>
-                <Pressable onPress={onClose} className="p-2" accessibilityRole="button" accessibilityLabel="Close">
+                <Text style={s.infoTitle}>Info</Text>
+                <Pressable
+                    onPress={onClose}
+                    className="p-2"
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                >
                     <X size={20} color="#fff" />
                 </Pressable>
             </View>
 
-            <ScrollView className="px-4 pb-4" style={{ maxHeight: SCREEN_HEIGHT * 0.5 }}>
+            <ScrollView className="px-4 pb-4" style={{ maxHeight: screenHeight * 0.5 }}>
                 <View className="gap-3">
                     <Text className="text-white text-lg font-semibold">{photo.name}</Text>
                     <Text className="text-gray-400 text-sm">{takenDate}</Text>
 
                     <View className="flex-row flex-wrap gap-x-6 gap-y-1">
-                        <Text className="text-gray-400 text-sm">{photo.width} × {photo.height}</Text>
+                        <Text className="text-gray-400 text-sm">
+                            {photo.width} × {photo.height}
+                        </Text>
                         <Text className="text-gray-400 text-sm">{formatBytes(photo.size)}</Text>
                         <Text className="text-gray-400 text-sm">{photo.mimeType}</Text>
                     </View>
 
-                    {(photo.cameraMake || photo.cameraModel || photo.iso || photo.aperture || photo.focalLength || photo.lensModel) ? (
+                    {hasExif ? (
                         <View className="pt-1 border-t border-gray-700/50">
-                            <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 4 }}>Camera</Text>
+                            <Text style={s.infoLabel}>Camera</Text>
                             <View className="flex-row flex-wrap gap-x-6 gap-y-1">
                                 {photo.cameraMake || photo.cameraModel ? (
                                     <Text className="text-gray-300 text-sm">
@@ -491,7 +767,9 @@ function RichInfoOverlay({
                                     <Text className="text-gray-300 text-sm">{photo.aperture}</Text>
                                 ) : null}
                                 {photo.focalLength ? (
-                                    <Text className="text-gray-300 text-sm">{photo.focalLength}</Text>
+                                    <Text className="text-gray-300 text-sm">
+                                        {photo.focalLength}
+                                    </Text>
                                 ) : null}
                             </View>
                         </View>
@@ -506,9 +784,9 @@ function RichInfoOverlay({
 
                     <View className="pt-1">
                         <View className="flex-row items-center justify-between">
-                            <Text style={{ color: '#9ca3af', fontSize: 12 }}>Description</Text>
-                            <Pressable onPress={() => setEditingDesc(!editingDesc)}>
-                                <Text style={{ color: '#60a5fa', fontSize: 12 }}>{editingDesc ? 'Cancel' : 'Edit'}</Text>
+                            <Text style={s.infoLabel}>Description</Text>
+                            <Pressable onPress={handleToggleEditDesc}>
+                                <Text style={s.editLink}>{editingDesc ? 'Cancel' : 'Edit'}</Text>
                             </Pressable>
                         </View>
                         {editingDesc ? (
@@ -520,12 +798,12 @@ function RichInfoOverlay({
                                     placeholder="Add a description..."
                                     placeholderTextColor="#666"
                                     className="rounded-lg px-3 py-2 text-white text-sm"
-                                    style={{ backgroundColor: '#333', minHeight: 60 }}
+                                    style={s.input}
                                 />
                                 <Pressable
                                     onPress={handleSaveDesc}
                                     className="self-end px-3 py-1.5 rounded-lg"
-                                    style={{ backgroundColor: '#60a5fa' }}
+                                    style={s.saveButton}
                                 >
                                     <Text className="text-white text-xs font-medium">Save</Text>
                                 </Pressable>
@@ -571,11 +849,7 @@ function RichInfoOverlay({
                                     onPress={onDownload}
                                     disabled={isDownloading}
                                 />
-                                <ActionButton
-                                    icon={Share2}
-                                    label="Share"
-                                    onPress={onShare}
-                                />
+                                <ActionButton icon={Share2} label="Share" onPress={onShare} />
                                 <ActionButton
                                     icon={Trash2}
                                     label="Delete"
@@ -604,28 +878,28 @@ function AlbumPickerModal({
 }) {
     return (
         <Modal visible transparent animationType="fade">
-            <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                <View className="w-full max-w-sm rounded-xl p-5 gap-3" style={{ backgroundColor: '#1c1c1e' }}>
-                    <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Add to Album</Text>
+            <View style={s.modalOverlay}>
+                <View style={s.modalContent}>
+                    <Text style={s.infoTitle}>Add to Album</Text>
                     <ScrollView className="max-h-64">
                         {albums.map(album => (
                             <Pressable
                                 key={album.id}
                                 onPress={() => onAdd(album.id)}
-                                className="py-3 px-2 rounded-lg border-b border-gray-700/50"
+                                style={s.albumItem}
                                 accessibilityRole="button"
                             >
-                                <Text style={{ color: '#fff', fontSize: 15 }}>{album.name}</Text>
+                                <Text className="text-white" style={{ fontSize: 15 }}>
+                                    {album.name}
+                                </Text>
                             </Pressable>
                         ))}
-                        {albums.length === 0 && (
-                            <Text style={{ color: '#666', fontSize: 14, textAlign: 'center', paddingVertical: 12 }}>
-                                No albums yet
-                            </Text>
-                        )}
+                        {albums.length === 0 ? (
+                            <Text style={s.emptyAlbums}>No albums yet</Text>
+                        ) : null}
                     </ScrollView>
                     <Pressable onPress={onClose} className="self-end px-4 py-2">
-                        <Text style={{ color: '#9ca3af', fontSize: 14 }}>Cancel</Text>
+                        <Text style={s.cancelText}>Cancel</Text>
                     </Pressable>
                 </View>
             </View>
@@ -633,14 +907,31 @@ function AlbumPickerModal({
     )
 }
 
-function VideoPlayerInline({ photo }: { photo: PhotoView }) {
+function VideoPlayerInline({
+    photo,
+    width,
+    height,
+}: {
+    photo: PhotoView
+    width: number
+    height: number
+}) {
     const source = useMemo(() => photoToSource(photo), [photo])
     const { url: videoUrl, isLoading } = useAuthedFileURL(source)
-    const { url: thumbUrl } = useAuthedThumbnailURL(source, `${SCREEN_WIDTH * 2}x${SCREEN_HEIGHT * 2}`)
+    const { url: thumbUrl } = useAuthedThumbnailURL(
+        source,
+        `${Math.round(width * 2)}x${Math.round(height * 2)}`
+    )
 
     const [isPlaying, setIsPlaying] = useState(false)
     const [showControls, setShowControls] = useState(true)
     const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    useEffect(() => {
+        return () => {
+            if (controlsTimer.current) clearTimeout(controlsTimer.current)
+        }
+    }, [])
 
     const handlePlay = useCallback(() => {
         if (videoUrl) {
@@ -655,38 +946,34 @@ function VideoPlayerInline({ photo }: { photo: PhotoView }) {
     const handleToggleControls = useCallback(() => {
         setShowControls(prev => !prev)
         if (controlsTimer.current) clearTimeout(controlsTimer.current)
-        if (!showControls) {
-            controlsTimer.current = setTimeout(() => setShowControls(false), 3000)
-        }
-    }, [showControls])
-
-    const formatDuration = (ms: number) => {
-        const totalSec = Math.floor(ms / 1000)
-        const min = Math.floor(totalSec / 60)
-        const sec = totalSec % 60
-        return `${min}:${sec.toString().padStart(2, '0')}`
-    }
+        controlsTimer.current = setTimeout(() => setShowControls(false), 3000)
+    }, [])
 
     if (isLoading || !videoUrl) {
         return (
-            <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={[s.centerBase, { width, height }]}>
                 {thumbUrl ? (
-                    <Image source={{ uri: thumbUrl }} style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }} resizeMode="contain" />
+                    <ExpoImage
+                        source={{ uri: thumbUrl }}
+                        style={{ width, height }}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                    />
                 ) : null}
-                <ActivityIndicator size="large" color="#fff" style={{ position: 'absolute' }} />
+                <ActivityIndicator size="large" color="#fff" className="absolute" />
             </View>
         )
     }
 
     if (Platform.OS === 'web' && isPlaying) {
         return (
-            <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: '#000' }} onTouchStart={handleToggleControls}>
+            <View style={[s.videoBase, { width, height }]} onTouchStart={handleToggleControls}>
                 {/* biome-ignore lint/a11y/useMediaCaption: user uploaded content */}
                 <video
                     src={videoUrl}
                     controls={showControls}
                     autoPlay
-                    style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, objectFit: 'contain' }}
+                    style={{ width, height, objectFit: 'contain' }}
                     onClick={handleToggleControls}
                 />
             </View>
@@ -694,12 +981,13 @@ function VideoPlayerInline({ photo }: { photo: PhotoView }) {
     }
 
     return (
-        <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: '#000' }}>
+        <View style={[s.videoBase, { width, height }]}>
             {thumbUrl ? (
-                <Image
+                <ExpoImage
                     source={{ uri: thumbUrl }}
-                    style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }}
-                    resizeMode="contain"
+                    style={{ width, height }}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
                 />
             ) : null}
 
@@ -709,16 +997,18 @@ function VideoPlayerInline({ photo }: { photo: PhotoView }) {
                 accessibilityRole="button"
                 accessibilityLabel="Play video"
             >
-                <View className="w-20 h-20 rounded-full bg-black/50 items-center justify-center">
+                <View style={s.playButton}>
                     <Play size={36} color="#fff" fill="#fff" />
                 </View>
             </Pressable>
 
-            {photo.duration > 0 && (
-                <View className="absolute bottom-4 right-4 bg-black/70 rounded-lg px-2 py-1">
-                    <Text className="text-white text-sm font-medium">{formatDuration(photo.duration)}</Text>
+            {photo.duration > 0 ? (
+                <View style={s.durationBadge} className="absolute bottom-4 right-4">
+                    <Text className="text-white text-sm font-medium">
+                        {formatDuration(photo.duration)}
+                    </Text>
                 </View>
-            )}
+            ) : null}
         </View>
     )
 }
@@ -738,45 +1028,17 @@ function ActionButton({
     disabled?: boolean
     danger?: boolean
 }) {
+    const iconColor = active ? '#ef4444' : danger ? '#ef4444' : '#fff'
     return (
         <Pressable
             onPress={onPress}
+            style={[s.actionButton, disabled ? s.disabledButton : undefined]}
             className="flex-row items-center gap-2 px-4 py-2 rounded-lg border border-gray-600"
             accessibilityRole="button"
             disabled={disabled}
-            style={disabled ? { opacity: 0.5 } : undefined}
         >
-            <Icon size={16} color={active ? '#ef4444' : danger ? '#ef4444' : '#fff'} />
+            <Icon size={16} color={iconColor} />
             <Text className="text-white text-sm font-medium">{label}</Text>
         </Pressable>
     )
-}
-
-function buildAuthedFileURL(photo: PhotoView, token: string): string {
-    const { pb } = require('@tinycld/core/lib/pocketbase')
-    return pb.files.getURL(
-        { collectionId: 'photos_items', id: photo.id },
-        photo.file,
-        { token }
-    )
-}
-
-function prefetchImage(source: { collectionId: string; recordId: string; fileName: string }, size: string) {
-    const { pb } = require('@tinycld/core/lib/pocketbase')
-    if (!pb.authStore.isValid) return
-    const token = pb.files.getToken?.()
-    if (!token) return
-    const url = pb.files.getURL(
-        { collectionId: source.collectionId, id: source.recordId },
-        source.fileName,
-        { token }
-    )
-    if (Platform.OS === 'web') {
-        const link = document.createElement('link')
-        link.rel = 'prefetch'
-        link.href = url
-        document.head.appendChild(link)
-    }
-    // Native: Image.prefetch
-    Image.prefetch(url)
 }

@@ -1,8 +1,75 @@
-import { useCallback } from 'react'
+import type PocketBase from 'pocketbase'
+
 import { queryClient, usePocketBase } from '@tinycld/core/lib/pocketbase'
+import { useCallback, useRef } from 'react'
+import { enqueue, getUploadState, updateStatus } from '../stores/upload-store'
+
+let processingPromise: Promise<void> | null = null
+
+async function processQueue(
+    pb: PocketBase,
+    orgId: string,
+    userOrgId: string
+): Promise<void> {
+    if (processingPromise) {
+        await processingPromise
+        return
+    }
+
+    processingPromise = process(pb, orgId, userOrgId)
+    try {
+        await processingPromise
+    } finally {
+        processingPromise = null
+    }
+}
+
+async function process(
+    pb: PocketBase,
+    orgId: string,
+    userOrgId: string
+): Promise<void> {
+    const concurrency = 4
+
+    while (true) {
+        const { entries } = getUploadState()
+        const pending = entries.filter(e => e.status === 'pending')
+        if (pending.length === 0) return
+
+        for (let i = 0; i < pending.length; i += concurrency) {
+            const batch = pending.slice(i, i + concurrency)
+            await Promise.allSettled(
+                batch.map(async entry => {
+                    updateStatus(entry.id, 'uploading')
+                    try {
+                        const formData = new FormData()
+                        formData.append('org', orgId)
+                        formData.append('owner', userOrgId)
+                        formData.append('name', entry.file.name)
+                        formData.append('size', String(entry.file.size))
+                        formData.append('file', entry.file, entry.file.name)
+                        formData.append('mime_type', entry.file.type || 'image/jpeg')
+                        formData.append('taken_at', new Date().toISOString())
+
+                        await pb.collection('photos_items').create(formData)
+                        updateStatus(entry.id, 'done')
+                        queryClient.invalidateQueries({ queryKey: ['photos_items'] })
+                    } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Upload failed'
+                        updateStatus(entry.id, 'failed', msg)
+                    }
+                })
+            )
+        }
+    }
+}
 
 export function usePhotoMutations(orgId: string, userOrgId: string) {
     const pb = usePocketBase()
+    const orgIdRef = useRef(orgId)
+    const userOrgIdRef = useRef(userOrgId)
+    orgIdRef.current = orgId
+    userOrgIdRef.current = userOrgId
 
     const uploadPhoto = useCallback(
         async (file: File) => {
@@ -18,7 +85,6 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
             formData.append('taken_at', new Date().toISOString())
 
             const record = await pb.collection('photos_items').create(formData)
-            await queryClient.invalidateQueries({ queryKey: ['photos_items'] })
             return record
         },
         [pb, orgId, userOrgId]
@@ -26,12 +92,20 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
 
     const uploadPhotos = useCallback(
         async (files: File[]) => {
-            const results = await Promise.allSettled(
-                files.map(f => uploadPhoto(f))
-            )
-            return results
+            if (!orgId || !userOrgId) return
+            enqueue(files)
+            processQueue(pb, orgIdRef.current, userOrgIdRef.current)
         },
-        [uploadPhoto]
+        [pb, orgId, userOrgId]
+    )
+
+    const retryUpload = useCallback(
+        async (entry: { id: string; file: File }) => {
+            if (!orgId || !userOrgId) return
+            updateStatus(entry.id, 'pending')
+            processQueue(pb, orgIdRef.current, userOrgIdRef.current)
+        },
+        [pb, orgId, userOrgId]
     )
 
     const toggleFavorite = useCallback(
@@ -39,7 +113,6 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
             await pb.collection('photos_items').update(photoId, {
                 is_favorite: !current,
             })
-            await queryClient.invalidateQueries({ queryKey: ['photos_items'] })
         },
         [pb]
     )
@@ -47,7 +120,6 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
     const updateDescription = useCallback(
         async (photoId: string, description: string) => {
             await pb.collection('photos_items').update(photoId, { description })
-            await queryClient.invalidateQueries({ queryKey: ['photos_items'] })
         },
         [pb]
     )
@@ -57,7 +129,6 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
             await pb.collection('photos_items').update(photoId, {
                 trashed_at: new Date().toISOString(),
             })
-            await queryClient.invalidateQueries({ queryKey: ['photos_items'] })
         },
         [pb]
     )
@@ -65,7 +136,6 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
     const restorePhoto = useCallback(
         async (photoId: string) => {
             await pb.collection('photos_items').update(photoId, { trashed_at: null })
-            await queryClient.invalidateQueries({ queryKey: ['photos_items'] })
         },
         [pb]
     )
@@ -73,7 +143,6 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
     const permanentlyDelete = useCallback(
         async (photoId: string) => {
             await pb.collection('photos_items').delete(photoId)
-            await queryClient.invalidateQueries({ queryKey: ['photos_items'] })
         },
         [pb]
     )
@@ -81,6 +150,7 @@ export function usePhotoMutations(orgId: string, userOrgId: string) {
     return {
         uploadPhoto,
         uploadPhotos,
+        retryUpload,
         toggleFavorite,
         updateDescription,
         trashPhoto,

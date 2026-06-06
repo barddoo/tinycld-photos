@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
-	"strings"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 
 	"github.com/pocketbase/pocketbase"
+	usearch "github.com/unum-cloud/usearch/golang"
 )
 
 type SearchResult struct {
@@ -28,19 +29,37 @@ type VectorSearcher interface {
 	Delete(ctx context.Context, photoID string) error
 }
 
+var globalSearcher atomic.Pointer[VectorSearcher]
+
+func SetVectorSearcher(s VectorSearcher) {
+	globalSearcher.Store(&s)
+}
+
+func GetVectorSearcher() VectorSearcher {
+	p := globalSearcher.Load()
+	if p != nil {
+		return *p
+	}
+	return nil
+}
+
 func NewVectorSearcher(app *pocketbase.PocketBase) VectorSearcher {
-	qdrantURL := os.Getenv("QDRANT_URL")
-	if qdrantURL != "" {
-		return &QdrantSearcher{
-			baseURL:    qdrantURL,
-			collection: os.Getenv("QDRANT_COLLECTION"),
-			apiKey:     os.Getenv("QDRANT_API_KEY"),
-			client:     &http.Client{},
+	indexPath := os.Getenv("USEARCH_INDEX_PATH")
+	if indexPath != "" {
+		s := &UsearchSearcher{
+			indexPath: indexPath,
+			app:       app,
 		}
+		if err := s.init(); err != nil {
+			app.Logger().Warn("usearch init failed, falling back to brute-force", "error", err)
+			return &BruteForceSearcher{app: app}
+		}
+		return s
 	}
 	return &BruteForceSearcher{app: app}
 }
 
+// BruteForceSearcher scans SQLite records and computes cosine similarity in Go.
 type BruteForceSearcher struct {
 	app *pocketbase.PocketBase
 }
@@ -82,7 +101,7 @@ func (s *BruteForceSearcher) Search(ctx context.Context, query []float32, topK i
 		return nil, nil
 	}
 
-		sortResults(candidates)
+	sortResults(candidates)
 
 	results := make([]SearchResult, 0, min(topK, len(candidates)))
 	for i := 0; i < len(candidates) && i < topK; i++ {
@@ -123,107 +142,191 @@ func (s *BruteForceSearcher) Delete(ctx context.Context, photoID string) error {
 	return s.app.Save(record)
 }
 
-type QdrantSearcher struct {
-	baseURL    string
-	collection string
-	apiKey     string
-	client     *http.Client
+// IDMap provides a bidirectional mapping between PocketBase string IDs and
+// usearch uint64 keys.
+type IDMap struct {
+	mu       sync.RWMutex
+	strToU64 map[string]uint64
+	u64ToStr map[uint64]string
+	next     uint64
 }
 
-func (s *QdrantSearcher) Search(ctx context.Context, query []float32, topK int) ([]SearchResult, error) {
-	body := map[string]any{
-		"vector": query,
-		"limit":  topK,
-		"with_payload": false,
+func newIDMap() *IDMap {
+	return &IDMap{
+		strToU64: make(map[string]uint64),
+		u64ToStr: make(map[uint64]string),
+		next:     1,
+	}
+}
+
+func (m *IDMap) GetOrAssign(strID string) uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.strToU64[strID]; ok {
+		return id
+	}
+	id := m.next
+	m.next++
+	m.strToU64[strID] = id
+	m.u64ToStr[id] = strID
+	return id
+}
+
+func (m *IDMap) GetString(u64ID uint64) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.u64ToStr[u64ID]
+	return s, ok
+}
+
+func (m *IDMap) Remove(strID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.strToU64[strID]; ok {
+		delete(m.strToU64, strID)
+		delete(m.u64ToStr, id)
+	}
+}
+
+func (m *IDMap) Contains(strID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.strToU64[strID]
+	return ok
+}
+
+func (m *IDMap) Len() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.strToU64)
+}
+
+// UsearchSearcher wraps a usearch HNSW index for approximate nearest-neighbor
+// search. SQLite is the source of truth; the usearch index is rebuilt from
+// on startup and persisted to disk for faster subsequent loads.
+type UsearchSearcher struct {
+	indexPath string
+	app       *pocketbase.PocketBase
+
+	idx   *usearch.Index
+	idMap *IDMap
+	mu    sync.RWMutex
+}
+
+func (s *UsearchSearcher) init() error {
+	dir := filepath.Dir(s.indexPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create index dir: %w", err)
 	}
 
-	data, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		s.baseURL+"/collections/"+url.PathEscape(s.collection)+"/points/search",
-		strings.NewReader(string(data)),
+	conf := usearch.DefaultConfig(512)
+	conf.Metric = usearch.Cosine
+	conf.Quantization = usearch.F32
+
+	var err error
+	s.idx, err = usearch.NewIndex(conf)
+	if err != nil {
+		return fmt.Errorf("new index: %w", err)
+	}
+	s.idMap = newIDMap()
+
+	return s.rebuildFromDB()
+}
+
+func (s *UsearchSearcher) rebuildFromDB() error {
+	records, err := s.app.FindRecordsByFilter(
+		"photos_items",
+		"smart_search_vector != null && smart_search_vector != ''",
+		"",
+		0, 0,
 	)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.apiKey != "" {
-		req.Header.Set("api-key", s.apiKey)
+		return fmt.Errorf("query vectors: %w", err)
 	}
 
-	resp, err := s.client.Do(req)
+	if len(records) > 0 {
+		_ = s.idx.Reserve(uint(len(records)))
+	}
+
+	for _, r := range records {
+		vecStr := r.GetString("smart_search_vector")
+		if vecStr == "" {
+			continue
+		}
+		var vec []float32
+		if err := json.Unmarshal([]byte(vecStr), &vec); err != nil {
+			continue
+		}
+		if len(vec) != 512 {
+			continue
+		}
+		u64Key := s.idMap.GetOrAssign(r.Id)
+		_ = s.idx.Add(usearch.Key(u64Key), vec)
+	}
+
+	return s.idx.Save(s.indexPath)
+}
+
+func (s *UsearchSearcher) Search(ctx context.Context, query []float32, topK int) ([]SearchResult, error) {
+	s.mu.RLock()
+	idx := s.idx
+	idMap := s.idMap
+	s.mu.RUnlock()
+
+	if idx == nil {
+		return nil, fmt.Errorf("index not initialized")
+	}
+
+	keys, distances, err := idx.Search(query, uint(topK))
 	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var qRes struct {
-		Result []struct {
-			ID     string  `json:"id"`
-			Score  float32 `json:"score"`
-		} `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&qRes); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("usearch search: %w", err)
 	}
 
-	results := make([]SearchResult, len(qRes.Result))
-	for i, r := range qRes.Result {
-		results[i] = SearchResult{PhotoID: r.ID, Score: r.Score}
+	results := make([]SearchResult, 0, len(keys))
+	for i := range keys {
+		strID, ok := idMap.GetString(uint64(keys[i]))
+		if !ok {
+			continue
+		}
+		score := 1.0 - distances[i]
+		results = append(results, SearchResult{PhotoID: strID, Score: score})
 	}
 	return results, nil
 }
 
-func (s *QdrantSearcher) Upsert(ctx context.Context, photoID string, embedding []float32) error {
-	point := map[string]any{
-		"id":     photoID,
-		"vector": embedding,
-	}
-	body := map[string]any{
-		"points": []any{point},
+func (s *UsearchSearcher) Upsert(ctx context.Context, photoID string, embedding []float32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.idx == nil {
+		return fmt.Errorf("index not initialized")
 	}
 
-	data, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "PUT",
-		s.baseURL+"/collections/"+url.PathEscape(s.collection)+"/points",
-		strings.NewReader(string(data)),
-	)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.apiKey != "" {
-		req.Header.Set("api-key", s.apiKey)
+	u64Key := s.idMap.GetOrAssign(photoID)
+	if err := s.idx.Add(usearch.Key(u64Key), embedding); err != nil {
+		return fmt.Errorf("usearch upsert: %w", err)
 	}
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return nil
+	return s.idx.Save(s.indexPath)
 }
 
-func (s *QdrantSearcher) Delete(ctx context.Context, photoID string) error {
-	body := map[string]any{
-		"points": []string{photoID},
-	}
-	data, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		s.baseURL+"/collections/"+url.PathEscape(s.collection)+"/points/delete",
-		strings.NewReader(string(data)),
-	)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.apiKey != "" {
-		req.Header.Set("api-key", s.apiKey)
+func (s *UsearchSearcher) Delete(ctx context.Context, photoID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.idx == nil {
+		return fmt.Errorf("index not initialized")
 	}
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return err
+	if !s.idMap.Contains(photoID) {
+		return nil
 	}
-	defer resp.Body.Close()
-	return nil
+
+	u64Key := s.idMap.GetOrAssign(photoID)
+	if err := s.idx.Remove(usearch.Key(u64Key)); err != nil {
+		return fmt.Errorf("usearch remove: %w", err)
+	}
+	s.idMap.Remove(photoID)
+
+	return s.idx.Save(s.indexPath)
 }

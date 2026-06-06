@@ -7,12 +7,11 @@ import type { PersonView, PhotosFace, PhotosPerson } from '../types'
 export function usePeople() {
     const [peopleStore] = useStore('photos_people')
 
-    const { data: people, isLoading } = useOrgLiveQuery(
-        (q, { orgId }) =>
-            q
-                .from({ p: peopleStore })
-                .where(({ p }) => eq(p.org, orgId))
-                .orderBy(({ p }) => p.name, 'asc'),
+    const { data: people, isLoading } = useOrgLiveQuery((q, { orgId }) =>
+        q
+            .from({ p: peopleStore })
+            .where(({ p }) => eq(p.org, orgId))
+            .orderBy(({ p }) => p.name, 'asc')
     )
 
     const viewModels = useMemo<PersonView[]>(() => {
@@ -37,11 +36,8 @@ export function usePersonPhotos(personId: string) {
     const [facesStore] = useStore('photos_faces')
 
     const { data: faces, isLoading } = useOrgLiveQuery(
-        (q, { orgId }) =>
-            q
-                .from({ f: facesStore })
-                .where(({ f }) => eq(f.person, personId)),
-        [personId],
+        (q, { orgId }) => q.from({ f: facesStore }).where(({ f }) => eq(f.person, personId)),
+        [personId]
     )
 
     const photoIds = useMemo(() => {

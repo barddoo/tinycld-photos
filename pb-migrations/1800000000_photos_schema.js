@@ -139,12 +139,6 @@ migrate(
                     required: false,
                 },
                 {
-                    name: 'qdrant_point_id',
-                    type: 'text',
-                    required: false,
-                    max: 100,
-                },
-                {
                     name: 'perceptual_hash',
                     type: 'text',
                     required: false,
@@ -752,6 +746,44 @@ migrate(
                     name: 'last_ocr_run',
                     type: 'date',
                     required: false,
+                },
+                {
+                    name: 'ocr_enabled',
+                    type: 'bool',
+                },
+                {
+                    name: 'min_face_score',
+                    type: 'number',
+                    required: false,
+                    min: 0,
+                    max: 1,
+                },
+                {
+                    name: 'max_face_distance',
+                    type: 'number',
+                    required: false,
+                    min: 0,
+                    max: 1,
+                },
+                {
+                    name: 'min_faces',
+                    type: 'number',
+                    required: false,
+                    min: 1,
+                },
+                {
+                    name: 'poll_interval_secs',
+                    type: 'number',
+                    required: false,
+                    min: 1,
+                    max: 3600,
+                },
+                {
+                    name: 'batch_size',
+                    type: 'number',
+                    required: false,
+                    min: 1,
+                    max: 100,
                 },
                 {
                     name: 'created',

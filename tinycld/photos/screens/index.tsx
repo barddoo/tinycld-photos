@@ -1,27 +1,47 @@
 import { FlashList } from '@shopify/flash-list'
+import { eq } from '@tanstack/db'
 import { DocumentTitle } from '@tinycld/core/components/DocumentTitle'
 import { EmptyState } from '@tinycld/core/components/EmptyState'
 import { LoadingState } from '@tinycld/core/components/LoadingState'
 import { useBreakpoint } from '@tinycld/core/components/workspace/useBreakpoint'
-import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
+import { useStore } from '@tinycld/core/lib/pocketbase'
+import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
-import { eq } from '@tanstack/db'
+import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
-import { Alert, Pressable, RefreshControl, ScrollView, View, type LayoutChangeEvent } from 'react-native'
+import {
+    Alert,
+    type LayoutChangeEvent,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    View,
+} from 'react-native'
 import DateSectionHeader from '../components/DateSectionHeader'
 import PhotoCard from '../components/PhotoCard'
 import TagChip from '../components/TagChip'
 import UploadButton from '../components/UploadButton'
+import UploadQueue from '../components/UploadQueue'
 import { usePhotoMutations } from '../hooks/usePhotoMutations'
 import { usePhotos } from '../hooks/usePhotos'
-import { useStore } from '@tinycld/core/lib/pocketbase'
-import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
 import type { ActiveSection, PhotoTag, PhotoView } from '../types'
 
 const GRID_GAP = 2
 const GRID_PADDING = 16
+
+const s = {
+    photoCell: (gap: number, padding: number) =>
+        ({
+            paddingHorizontal: gap / 2,
+            paddingBottom: gap,
+        }) as const,
+    contentContainer: (padding: number, gap: number) =>
+        ({
+            paddingHorizontal: padding - gap / 2,
+        }) as const,
+} as const
 
 type ListRow =
     | { kind: 'section'; title: string; count: number }
@@ -68,7 +88,10 @@ export default function PhotosTimeline({ section: _section }: Props) {
     const orgHref = useOrgHref()
     const isMobile = useBreakpoint() === 'mobile'
     const { photos, timeline, isLoading } = usePhotos(section)
-    const { uploadPhotos, restorePhoto, permanentlyDelete } = usePhotoMutations(orgId || '', userOrgId)
+    const { uploadPhotos, restorePhoto, permanentlyDelete, retryUpload } = usePhotoMutations(
+        orgId || '',
+        userOrgId
+    )
     const { cols, cardSize, onLayout } = useGridColumns(isMobile)
 
     const [tagsCollection] = useStore('photos_tags')
@@ -78,7 +101,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
                 .from({ t: tagsCollection })
                 .where(({ t }) => eq(t.org, orgId))
                 .orderBy(({ t }) => t.name, 'asc'),
-        [],
+        []
     )
     const tags = (rawTags ?? []) as PhotoTag[]
     const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
@@ -108,24 +131,20 @@ export default function PhotosTimeline({ section: _section }: Props) {
     const handlePhotoLongPress = useCallback(
         (photo: PhotoView) => {
             if (section !== 'trash') return
-            Alert.alert(
-                photo.name,
-                'What would you like to do?',
-                [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Restore',
-                        onPress: () => restorePhoto(photo.id),
-                    },
-                    {
-                        text: 'Delete permanently',
-                        style: 'destructive',
-                        onPress: () => permanentlyDelete(photo.id),
-                    },
-                ],
-            )
+            Alert.alert(photo.name, 'What would you like to do?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Restore',
+                    onPress: () => restorePhoto(photo.id),
+                },
+                {
+                    text: 'Delete permanently',
+                    style: 'destructive',
+                    onPress: () => permanentlyDelete(photo.id),
+                },
+            ])
         },
-        [section, restorePhoto, permanentlyDelete],
+        [section, restorePhoto, permanentlyDelete]
     )
 
     const [isRefreshing, setIsRefreshing] = useState(false)
@@ -166,7 +185,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
             }
             if (item.kind === 'photo') {
                 return (
-                    <View style={{ paddingHorizontal: GRID_GAP / 2, paddingBottom: GRID_GAP }}>
+                    <View style={s.photoCell(GRID_GAP, GRID_PADDING)}>
                         <PhotoCard
                             photo={item.photo}
                             size={cardSize}
@@ -206,6 +225,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
                     <EmptyState message={message} />
                 </View>
                 <UploadButton onFiles={handleFiles} />
+                <UploadQueue onRetry={retryUpload} />
             </>
         )
     }
@@ -217,7 +237,11 @@ export default function PhotosTimeline({ section: _section }: Props) {
             <View className="flex-1 bg-background" onLayout={onLayout}>
                 <DocumentTitle pkg="Photos" />
                 {hasTagFilter && (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="py-2 px-3 flex-row gap-1.5">
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        className="py-2 px-3 flex-row gap-1.5"
+                    >
                         {tags.map(tag => (
                             <TagChip
                                 key={tag.id}
@@ -237,7 +261,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
                     getItemType={getItemType}
                     numColumns={cols}
                     overrideItemLayout={overrideItemLayout}
-                    contentContainerStyle={{ paddingHorizontal: GRID_PADDING - GRID_GAP / 2 }}
+                    contentContainerStyle={s.contentContainer(GRID_PADDING, GRID_GAP)}
                     refreshControl={
                         isMobile ? (
                             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -246,6 +270,7 @@ export default function PhotosTimeline({ section: _section }: Props) {
                 />
             </View>
             <UploadButton onFiles={handleFiles} />
+            <UploadQueue onRetry={retryUpload} />
         </>
     )
 }

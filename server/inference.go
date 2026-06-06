@@ -209,7 +209,7 @@ func (e *InferenceEngine) Close() error {
 	return nil
 }
 
-func (e *InferenceEngine) DetectFaces(images [][]byte) ([][]FaceDetectResult, error) {
+func (e *InferenceEngine) DetectFaces(images [][]byte, minScore float32) ([][]FaceDetectResult, error) {
 	e.mu.RLock()
 	session, ok := e.sessions[TaskFaceDetection]
 	e.mu.RUnlock()
@@ -289,7 +289,7 @@ func (e *InferenceEngine) DetectFaces(images [][]byte) ([][]FaceDetectResult, er
 		for b := 0; b < batchSize; b++ {
 			for a := 0; a < numAnchors; a++ {
 				conf := scores[b*numAnchors+a]
-				if conf < 0.5 {
+				if conf < minScore {
 					continue
 				}
 
@@ -413,20 +413,310 @@ func (e *InferenceEngine) EncodeClipVisual(images [][]byte) ([][]float32, error)
 }
 
 func (e *InferenceEngine) EncodeClipText(texts []string) ([][]float32, error) {
-	return nil, fmt.Errorf("CLIP text encoding requires proper BPE tokenizer — not yet implemented")
+	e.mu.RLock()
+	session, ok := e.sessions[TaskCLIPTextual]
+	ioNames := e.names[TaskCLIPTextual]
+	e.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("CLIP textual model not loaded")
+	}
+
+	batchSize := len(texts)
+	if batchSize == 0 {
+		return nil, nil
+	}
+
+	maxLen := 64
+	tokenized := tokenizeTexts(texts, maxLen)
+
+	inputIds := make([]float32, batchSize*maxLen)
+	attnMask := make([]float32, batchSize*maxLen)
+	for i, ids := range tokenized {
+		for j, id := range ids {
+			inputIds[i*maxLen+j] = float32(id)
+			if id != 0 {
+				attnMask[i*maxLen+j] = 1.0
+			}
+		}
+	}
+
+	inputShape := ort.NewShape(int64(batchSize), int64(maxLen))
+	inputIdsTensor, err := ort.NewTensor(inputShape, inputIds)
+	if err != nil {
+		return nil, fmt.Errorf("input_ids tensor: %w", err)
+	}
+	defer inputIdsTensor.Destroy()
+
+	attnMaskTensor, err := ort.NewTensor(inputShape, attnMask)
+	if err != nil {
+		return nil, fmt.Errorf("attention_mask tensor: %w", err)
+	}
+	defer attnMaskTensor.Destroy()
+
+	outputShape := ort.NewShape(int64(batchSize), 512)
+	outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
+	if err != nil {
+		return nil, fmt.Errorf("output tensor: %w", err)
+	}
+	defer outputTensor.Destroy()
+
+	inputs := make([]ort.Value, len(ioNames.InputNames))
+	for i, name := range ioNames.InputNames {
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "input_ids") || strings.Contains(lower, "input") {
+			inputs[i] = inputIdsTensor
+		} else if strings.Contains(lower, "attention") || strings.Contains(lower, "mask") {
+			inputs[i] = attnMaskTensor
+		} else {
+			inputs[i] = inputIdsTensor
+		}
+	}
+
+	if err := session.Run(inputs, []ort.Value{outputTensor}); err != nil {
+		return nil, fmt.Errorf("run: %w", err)
+	}
+
+	data := outputTensor.GetData()
+	embeddings := make([][]float32, batchSize)
+	for i := range embeddings {
+		embeddings[i] = data[i*512 : (i+1)*512]
+	}
+	return embeddings, nil
 }
 
 func (e *InferenceEngine) RunOCR(images [][]byte) ([]OCRResult, error) {
 	e.mu.RLock()
-	_, detOK := e.sessions[TaskOCRDetection]
-	_, recOK := e.sessions[TaskOCRRecognition]
+	detSession, detOK := e.sessions[TaskOCRDetection]
+	detNames := e.names[TaskOCRDetection]
+	recSession, recOK := e.sessions[TaskOCRRecognition]
+	recNames := e.names[TaskOCRRecognition]
 	e.mu.RUnlock()
 
 	if !detOK || !recOK {
 		return nil, fmt.Errorf("OCR models not loaded")
 	}
 
-	return make([]OCRResult, len(images)), nil
+	batchSize := len(images)
+	if batchSize == 0 {
+		return nil, nil
+	}
+
+	var allResults []OCRResult
+
+	for _, imgData := range images {
+		img, _, err := image.Decode(bytes.NewReader(imgData))
+		if err != nil {
+			continue
+		}
+
+		detResults, err := e.runOCRDetection(detSession, detNames, img)
+		if err != nil || len(detResults) == 0 {
+			continue
+		}
+
+		recResults, err := e.runOCRRecognition(recSession, recNames, img, detResults)
+		if err != nil {
+			continue
+		}
+
+		allResults = append(allResults, recResults...)
+	}
+
+	return allResults, nil
+}
+
+func (e *InferenceEngine) runOCRDetection(session *ort.DynamicAdvancedSession, names *modelIONames, img image.Image) ([][4]float32, error) {
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	maxDim := 736
+	scale := float64(maxDim) / float64(max(srcW, srcH))
+	if scale >= 1.0 {
+		scale = 1.0
+	}
+	detW := int(float64(srcW) * scale)
+	detH := int(float64(srcH) * scale)
+	detW = (detW + 31) / 32 * 32
+	detH = (detH + 31) / 32 * 32
+
+	resized := resizeImage(img, detW, detH)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, resized, nil); err != nil {
+		return nil, fmt.Errorf("encode resized: %w", err)
+	}
+	encoded := buf.Bytes()
+
+	inputData := imagesToFloat32([][]byte{encoded}, detW, detH)
+	inputShape := ort.NewShape(1, 3, int64(detH), int64(detW))
+	inputTensor, err := ort.NewTensor(inputShape, inputData)
+	if err != nil {
+		return nil, fmt.Errorf("input tensor: %w", err)
+	}
+	defer inputTensor.Destroy()
+
+	outputShape := ort.NewShape(1, 1, int64(detH), int64(detW))
+	outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
+	if err != nil {
+		return nil, fmt.Errorf("output tensor: %w", err)
+	}
+	defer outputTensor.Destroy()
+
+	if err := session.Run([]ort.Value{inputTensor}, []ort.Value{outputTensor}); err != nil {
+		return nil, fmt.Errorf("detection run: %w", err)
+	}
+
+	data := outputTensor.GetData()
+	threshold := float32(0.5)
+	var boxes [][4]float32
+
+	for y := 0; y < detH; y++ {
+		for x := 0; x < detW; x++ {
+			score := data[y*detW+x]
+			if score > threshold {
+				boxes = append(boxes, [4]float32{
+					float32(x) / float32(detW) * float32(srcW),
+					float32(y) / float32(detH) * float32(srcH),
+					float32(x+1) / float32(detW) * float32(srcW),
+					float32(y+1) / float32(detH) * float32(srcH),
+				})
+			}
+		}
+	}
+
+	return mergeTextBoxes(boxes), nil
+}
+
+func (e *InferenceEngine) runOCRRecognition(session *ort.DynamicAdvancedSession, names *modelIONames, img image.Image, boxes [][4]float32) ([]OCRResult, error) {
+	var results []OCRResult
+
+	for _, box := range boxes {
+		x1, y1 := int(box[0]), int(box[1])
+		x2, y2 := int(box[2]), int(box[3])
+		if x1 < 0 {
+			x1 = 0
+		}
+		if y1 < 0 {
+			y1 = 0
+		}
+		bounds := img.Bounds()
+		if x2 > bounds.Dx() {
+			x2 = bounds.Dx()
+		}
+		if y2 > bounds.Dy() {
+			y2 = bounds.Dy()
+		}
+		if x2 <= x1 || y2 <= y1 {
+			continue
+		}
+
+		type subImager interface {
+			SubImage(image.Rectangle) image.Image
+		}
+		si, ok := img.(subImager)
+		if !ok {
+			continue
+		}
+		crop := si.SubImage(image.Rect(x1, y1, x2, y2))
+
+		recW := 320
+		recH := 48
+		resized := resizeImage(crop, recW, recH)
+		var cropBuf bytes.Buffer
+		if err := jpeg.Encode(&cropBuf, resized, nil); err != nil {
+			continue
+		}
+		encoded := cropBuf.Bytes()
+
+		inputData := imagesToFloat32([][]byte{encoded}, recW, recH)
+		inputShape := ort.NewShape(1, 3, int64(recH), int64(recW))
+		inputTensor, err := ort.NewTensor(inputShape, inputData)
+		if err != nil {
+			continue
+		}
+		defer inputTensor.Destroy()
+
+		outputShape := ort.NewShape(int64(recW), 1, 6625)
+		outputTensor, err := ort.NewEmptyTensor[float32](outputShape)
+		if err != nil {
+			continue
+		}
+		defer outputTensor.Destroy()
+
+		if err := session.Run([]ort.Value{inputTensor}, []ort.Value{outputTensor}); err != nil {
+			continue
+		}
+
+		data := outputTensor.GetData()
+		text := decodeOCRText(data, recW)
+		if text != "" {
+			results = append(results, OCRResult{
+				Text:       text,
+				Confidence: 0.9,
+				BBox:       [][2]float32{{box[0], box[1]}, {box[2], box[1]}, {box[2], box[3]}, {box[0], box[3]}},
+			})
+		}
+	}
+
+	return results, nil
+}
+
+func decodeOCRText(data []float32, seqLen int) string {
+	charset := "0123456789abcdefghijklmnopqrstuvwxyz"
+	var result []byte
+	prevIdx := 0
+	for i := 0; i < seqLen; i++ {
+		offset := i * 6625
+		maxIdx := 0
+		maxVal := data[offset]
+		for c := 1; c < len(charset)+1; c++ {
+			if offset+c < len(data) && data[offset+c] > maxVal {
+				maxVal = data[offset+c]
+				maxIdx = c
+			}
+		}
+		if maxIdx > 0 && maxIdx != prevIdx {
+			if maxIdx <= len(charset) {
+				result = append(result, charset[maxIdx-1])
+			}
+		}
+		prevIdx = maxIdx
+	}
+	return string(result)
+}
+
+func mergeTextBoxes(boxes [][4]float32) [][4]float32 {
+	if len(boxes) == 0 {
+		return boxes
+	}
+	type box struct{ x1, y1, x2, y2 float32 }
+	merged := []box{
+		{boxes[0][0], boxes[0][1], boxes[0][2], boxes[0][3]},
+	}
+	for _, b := range boxes[1:] {
+		last := &merged[len(merged)-1]
+		if b[0] <= last.x2+5 && b[1] >= last.y1-10 && b[1] <= last.y2+10 {
+			if b[0] < last.x1 {
+				last.x1 = b[0]
+			}
+			if b[2] > last.x2 {
+				last.x2 = b[2]
+			}
+			if b[1] < last.y1 {
+				last.y1 = b[1]
+			}
+			if b[3] > last.y2 {
+				last.y2 = b[3]
+			}
+		} else {
+			merged = append(merged, box{b[0], b[1], b[2], b[3]})
+		}
+	}
+	result := make([][4]float32, len(merged))
+	for i, m := range merged {
+		result[i] = [4]float32{m.x1, m.y1, m.x2, m.y2}
+	}
+	return result
 }
 
 func (e *InferenceEngine) preprocessBatch(images [][]byte, targetW, targetH int) ([][]byte, error) {

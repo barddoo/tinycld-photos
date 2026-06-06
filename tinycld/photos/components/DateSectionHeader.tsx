@@ -13,7 +13,9 @@ export default function DateSectionHeader({ label, photoCount }: Props) {
     return (
         <View className="flex-row items-center justify-between px-4 py-3">
             <Text style={{ color: fg, fontSize: 18, fontWeight: '600' }}>{label}</Text>
-            <Text style={{ color: muted, fontSize: 13 }}>{photoCount} photo{photoCount !== 1 ? 's' : ''}</Text>
+            <Text style={{ color: muted, fontSize: 13 }}>
+                {photoCount} photo{photoCount !== 1 ? 's' : ''}
+            </Text>
         </View>
     )
 }

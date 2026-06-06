@@ -52,10 +52,7 @@ export default function AlbumCard({ album, coverPhoto, onPress }: Props) {
                 )}
             </View>
             <View className="px-3 py-2.5 gap-0.5">
-                <Text
-                    numberOfLines={1}
-                    style={{ color: fg, fontSize: 14, fontWeight: '500' }}
-                >
+                <Text numberOfLines={1} style={{ color: fg, fontSize: 14, fontWeight: '500' }}>
                     {album.name}
                 </Text>
                 <Text style={{ color: muted, fontSize: 12 }}>

@@ -1,66 +1,111 @@
 # photos
 
-Photos for your organization
-
-A feature package for the [tinycld](https://tinycld.org/) ecosystem. It lives in
-its own git repo and is developed as a **workspace member** alongside the app
-shell (`app`), `@tinycld/core` (its own standalone repo, cloned as a sibling —
-not bundled), and the other feature packages.
+Photos for your organization — [tinycld](https://tinycld.org/) feature package.
 
 ## Development
 
-The package is one member of a tinycld workspace. To work on it you need a
-workspace root containing at least `app`, `core`, and this package as siblings,
-linked by a single `pnpm install` at the root.
-
 ```sh
-# In a fresh workspace directory, clone this package into a member slot…
 git clone git@github.com:tinycld/photos.git
-
-# …then assemble the rest of the workspace (app + core + the workspace
-# package.json / tinycld.packages.ts). bootstrap --assemble-only skips
-# dirs that already exist.
 npx @tinycld/bootstrap@latest --assemble-only
-
-# Link every member with one install at the WORKSPACE ROOT (never inside a
-# member — siblings have no node_modules of their own; deps hoist to the root).
 pnpm install
-
-# Run the full stack (Expo + PocketBase, single-port dev proxy) from the app.
-cd app
-pnpm run dev
+cd app && pnpm run dev
 ```
 
 ## Checks
 
-All checks run **scoped to this member** through `tinycld-pkg`, which reuses the
-app shell's biome config, tsconfig base, and vitest/playwright configs (so
-`@tinycld/core/*`, uniwind augments, and PocketBase types all resolve):
-
 ```sh
 cd photos
-pnpm exec tinycld-pkg check       # biome + typecheck
-pnpm exec tinycld-pkg test        # vitest unit tests
-pnpm exec tinycld-pkg test:e2e    # playwright e2e specs (full preset only — packages with screens)
+pnpm exec tinycld-pkg check    # biome + typecheck
+pnpm exec tinycld-pkg test     # vitest unit tests
+pnpm exec tinycld-pkg test:e2e # playwright e2e specs
 ```
 
-There is no `biome.json` in this repo — biome lives only in the app shell and
-`tinycld-pkg` points it at this member's source.
+## Go server
 
-## CI
+Server plugin in `server/` (Go module `tinycld.org/packages/photos`). Provides
+ML inference, vector search, thumbnailing, EXIF extraction, and geocoding.
 
-`.github/workflows/ci.yml` runs typecheck, unit tests, and e2e on every push to
-`main` and every PR. It checks out this PR's code into a member slot, assembles
-the rest of the workspace (`app` + `core` + the workspace `package.json` and
-coordination files) via `npx @tinycld/bootstrap --assemble-only`, installs at
-the workspace root, and runs `tinycld-pkg check` / `tinycld-pkg test:e2e` —
-exactly what a developer runs locally.
+### libonnxruntime (ML inference)
+
+ONNX Runtime shared library required for ML features. Set `ONNXRUNTIME_SHARED_LIBRARY_PATH`
+pointing to the `.dylib`/`.so`.
+
+**macOS (arm64 / x86_64)**:
+
+```sh
+brew install onnxruntime
+```
+
+`ONNXRUNTIME_SHARED_LIBRARY_PATH=$(brew --prefix onnxruntime)/lib/libonnxruntime.dylib`
+
+**Linux (x86_64)**:
+
+```sh
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.21.0/onnxruntime-linux-x64-1.21.0.tgz -o /tmp/onnx.tgz
+tar xzf /tmp/onnx.tgz -C /tmp
+sudo cp /tmp/onnxruntime-linux-x64-1.21.0/lib/libonnxruntime.so* /usr/local/lib/
+sudo ldconfig
+```
+
+`ONNXRUNTIME_SHARED_LIBRARY_PATH=/usr/local/lib/libonnxruntime.so.1.21.0`
+
+**Linux (arm64)**:
+
+```sh
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.21.0/onnxruntime-linux-arm64-1.21.0.tgz -o /tmp/onnx.tgz
+tar xzf /tmp/onnx.tgz -C /tmp
+sudo cp /tmp/onnxruntime-linux-arm64-1.21.0/lib/libonnxruntime.so* /usr/local/lib/
+sudo ldconfig
+```
+
+**Arch Linux**:
+
+```sh
+yay -S onnxruntime
+```
+
+`ONNXRUNTIME_SHARED_LIBRARY_PATH=/usr/lib/libonnxruntime.so`
+
+Other CPU archs & GPU-enabled builds: [releases](https://github.com/microsoft/onnxruntime/releases).
+
+### usearch (vector search)
+
+Optional HNSW index for faster search at scale. Enable with `USEARCH_INDEX_PATH` env var.
+
+**macOS**:
+
+```sh
+wget https://github.com/unum-cloud/USearch/releases/download/v2.25.3/usearch_macos_arm64_2.25.3.zip
+unzip usearch_macos_arm64_2.25.3.zip
+sudo mv libusearch_c.dylib /usr/local/lib && sudo mv usearch.h /usr/local/include
+```
+
+**Linux (x86_64)**:
+
+```sh
+wget https://github.com/unum-cloud/USearch/releases/download/v2.25.3/usearch_linux_amd64_2.25.3.deb
+sudo dpkg -i usearch_linux_amd64_2.25.3.deb
+```
+
+**Linux (arm64)**:
+
+```sh
+wget https://github.com/unum-cloud/USearch/releases/download/v2.25.3/usearch_linux_arm64_2.25.3.deb
+sudo dpkg -i usearch_linux_arm64_2.25.3.deb
+```
+
+**Arch Linux**:
+
+```sh
+wget https://github.com/unum-cloud/USearch/releases/download/v2.25.3/usearch_linux_amd64_2.25.3.so -O /usr/local/lib/libusearch_c.so
+wget https://github.com/unum-cloud/USearch/raw/v2.25.3/usearch/c/usearch.h -O /usr/local/include/usearch.h
+```
+
+Other platforms: [releases](https://github.com/unum-cloud/USearch/releases).
 
 ## Package anatomy
 
-- `manifest.ts` — the single source of truth for this package's capabilities
-- `package.json` — name, exports map, `tinycld-pkg` scripts, peer deps
-- `tsconfig.json` — extends the app shell's package tsconfig base
-- `vitest.config.ts` (and `playwright.config.ts` — full preset only) — thin configs spreading the app's
-- `tinycld/photos/` — the package's TypeScript surface (screens, collections, …)
-- `tests/` — vitest unit tests (and Playwright e2e specs — full preset only)
+- `manifest.ts` — package capabilities
+- `tinycld/photos/` — TypeScript surface (screens, collections, hooks, …)
+- `server/` — Go server plugin
+- `tests/` — vitest unit tests & Playwright e2e specs

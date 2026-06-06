@@ -1,4 +1,4 @@
-import type { PhotoView, ActiveSection } from '../types'
+import type { ActiveSection, PhotoView } from '../types'
 
 export type DialogTarget = { id: string; name: string }
 

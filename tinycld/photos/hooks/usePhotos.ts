@@ -10,6 +10,22 @@ export interface TimelineSegment {
     photos: PhotoView[]
 }
 
+export function toPhotoViews(
+    items: (PhotoItem | undefined | null)[] | null | undefined
+): PhotoView[] {
+    if (!items) return []
+    const seen = new Set<string>()
+    const result: PhotoView[] = []
+    for (const item of items) {
+        if (!item) continue
+        if (seen.has(item.id)) continue
+        seen.add(item.id)
+        if (item.trashed_at) continue
+        result.push(photoToView(item))
+    }
+    return result
+}
+
 export function photoToView(p: PhotoItem): PhotoView {
     return {
         id: p.id,
@@ -79,18 +95,14 @@ function groupByDay(photos: PhotoView[]): TimelineSegment[] {
 export function usePhotos(section: ActiveSection = 'timeline') {
     const [itemsCollection] = useStore('photos_items')
 
-    const { data: rawPhotos, isLoading } = useOrgLiveQuery(
-        (query, { orgId }) =>
-            query
-                .from({ p: itemsCollection })
-                .where(({ p }) => eq(p.org, orgId))
-                .orderBy(({ p }) => p.taken_at, 'desc'),
+    const { data: rawPhotos, isLoading } = useOrgLiveQuery((query, { orgId }) =>
+        query
+            .from({ p: itemsCollection })
+            .where(({ p }) => eq(p.org, orgId))
+            .orderBy(({ p }) => p.taken_at, 'desc')
     )
 
-    const allPhotos = useMemo<PhotoView[]>(
-        () => (rawPhotos ?? []).map(photoToView),
-        [rawPhotos]
-    )
+    const allPhotos = useMemo<PhotoView[]>(() => (rawPhotos ?? []).map(photoToView), [rawPhotos])
 
     const photos = useMemo(() => {
         switch (section) {

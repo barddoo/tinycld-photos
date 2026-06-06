@@ -1,5 +1,5 @@
-import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
+import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { router } from 'expo-router'
 import { Users } from 'lucide-react-native'
 import { useCallback } from 'react'
@@ -16,42 +16,48 @@ export default function PeopleScreen() {
     const surface = useThemeColor('surface')
     const orgHref = useOrgHref()
 
-    const handlePersonPress = useCallback((id: string) => {
-        router.push(orgHref(`photos/people/${id}`))
-    }, [orgHref])
+    const handlePersonPress = useCallback(
+        (id: string) => {
+            router.push(orgHref(`photos/people/${id}`))
+        },
+        [orgHref]
+    )
 
-    const renderPerson = useCallback(({ item }: { item: PersonView }) => {
-        const initial = item.name.charAt(0).toUpperCase()
-        return (
-            <Pressable
-                onPress={() => handlePersonPress(item.id)}
-                className="flex-row items-center px-4 py-3"
-                style={({ pressed }: { pressed: boolean }) => ({
-                    opacity: pressed ? 0.7 : 1,
-                    backgroundColor: surface,
-                    marginHorizontal: 12,
-                    marginVertical: 3,
-                    borderRadius: 12,
-                })}
-                accessibilityRole="button"
-                accessibilityLabel={item.name}
-            >
-                <View
-                    className="h-12 w-12 rounded-full items-center justify-center"
-                    style={{ backgroundColor: item.color || muted }}
+    const renderPerson = useCallback(
+        ({ item }: { item: PersonView }) => {
+            const initial = item.name.charAt(0).toUpperCase()
+            return (
+                <Pressable
+                    onPress={() => handlePersonPress(item.id)}
+                    className="flex-row items-center px-4 py-3"
+                    style={({ pressed }: { pressed: boolean }) => ({
+                        opacity: pressed ? 0.7 : 1,
+                        backgroundColor: surface,
+                        marginHorizontal: 12,
+                        marginVertical: 3,
+                        borderRadius: 12,
+                    })}
+                    accessibilityRole="button"
+                    accessibilityLabel={item.name}
                 >
-                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>
-                        {initial}
-                    </Text>
-                </View>
-                <View className="ml-3 flex-1">
-                    <Text style={{ color: fg, fontSize: 16, fontWeight: '500' }}>
-                        {item.name}
-                    </Text>
-                </View>
-            </Pressable>
-        )
-    }, [fg, muted, surface, handlePersonPress])
+                    <View
+                        className="h-12 w-12 rounded-full items-center justify-center"
+                        style={{ backgroundColor: item.color || muted }}
+                    >
+                        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>
+                            {initial}
+                        </Text>
+                    </View>
+                    <View className="ml-3 flex-1">
+                        <Text style={{ color: fg, fontSize: 16, fontWeight: '500' }}>
+                            {item.name}
+                        </Text>
+                    </View>
+                </Pressable>
+            )
+        },
+        [fg, muted, surface, handlePersonPress]
+    )
 
     if (isLoading) {
         return (
@@ -63,10 +69,14 @@ export default function PeopleScreen() {
 
     if (people.length === 0) {
         return (
-            <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: bg }}>
+            <View
+                className="flex-1 items-center justify-center px-8"
+                style={{ backgroundColor: bg }}
+            >
                 <Users size={48} color={muted} accessibilityRole="image" />
                 <Text style={{ color: muted, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
-                    No people found yet. Enable ML face detection to automatically identify people in your photos.
+                    No people found yet. Enable ML face detection to automatically identify people
+                    in your photos.
                 </Text>
             </View>
         )

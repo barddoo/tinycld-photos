@@ -38,10 +38,13 @@ export function useVideoPlayer(videoRef: React.RefObject<any>) {
         else play()
     }, [state.isPlaying, play, pause])
 
-    const seek = useCallback((position: number) => {
-        setState(s => ({ ...s, position }))
-        videoRef.current?.setPositionAsync?.(position)
-    }, [videoRef])
+    const seek = useCallback(
+        (position: number) => {
+            setState(s => ({ ...s, position }))
+            videoRef.current?.setPositionAsync?.(position)
+        },
+        [videoRef]
+    )
 
     const toggleMute = useCallback(() => {
         setState(s => ({ ...s, isMuted: !s.isMuted }))

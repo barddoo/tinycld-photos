@@ -14,6 +14,8 @@ import (
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
+const videoThumbnailSize = 1024
+
 var supportedVideoTypes = map[string]bool{
 	"video/mp4":        true,
 	"video/quicktime":  true,
@@ -79,7 +81,7 @@ func generateVideoThumbnail(srcPath string) (string, error) {
 		Filter("select", ffmpeg.Args{"gte(n,1)"}).
 		Output(thumbPath, ffmpeg.KwArgs{
 			"vframes": "1",
-			"vf":      fmt.Sprintf("scale='min(%d,iw)':min'(%d,ih)':force_original_aspect_ratio=decrease", maxThumbnailSize, maxThumbnailSize),
+			"vf":      fmt.Sprintf("scale='min(%d,iw)':min'(%d,ih)':force_original_aspect_ratio=decrease", videoThumbnailSize, videoThumbnailSize),
 			"q:v":     "2",
 		}).
 		OverWriteOutput().

@@ -2,12 +2,12 @@ import { FlashList } from '@shopify/flash-list'
 import { DocumentTitle } from '@tinycld/core/components/DocumentTitle'
 import { EmptyState } from '@tinycld/core/components/EmptyState'
 import { LoadingState } from '@tinycld/core/components/LoadingState'
+import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
-import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
-import { useCallback, useState } from 'react'
-import { Pressable, Text, TextInput, View, Modal } from 'react-native'
 import { Plus, X } from 'lucide-react-native'
+import { useCallback, useState } from 'react'
+import { Modal, Pressable, Text, TextInput, View } from 'react-native'
 import TagChip from '../../components/TagChip'
 import { useTags } from '../../hooks/useTags'
 import type { PhotoTag } from '../../types'
@@ -33,9 +33,12 @@ export default function TagsManage() {
         setShowCreate(false)
     }, [newName, newColor, createTag])
 
-    const handleDelete = useCallback(async (tag: PhotoTag) => {
-        await deleteTag(tag.id)
-    }, [deleteTag])
+    const handleDelete = useCallback(
+        async (tag: PhotoTag) => {
+            await deleteTag(tag.id)
+        },
+        [deleteTag]
+    )
 
     if (isLoading) return <LoadingState />
 
@@ -78,10 +81,18 @@ export default function TagsManage() {
             )}
 
             <Modal visible={showCreate} transparent animationType="fade">
-                <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-                    <View className="w-full max-w-sm rounded-xl p-5 gap-4" style={{ backgroundColor: '#1c1c1e' }}>
+                <View
+                    className="flex-1 items-center justify-center px-6"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+                >
+                    <View
+                        className="w-full max-w-sm rounded-xl p-5 gap-4"
+                        style={{ backgroundColor: '#1c1c1e' }}
+                    >
                         <View className="flex-row items-center justify-between">
-                            <Text style={{ color: fg, fontSize: 17, fontWeight: '600' }}>New Tag</Text>
+                            <Text style={{ color: fg, fontSize: 17, fontWeight: '600' }}>
+                                New Tag
+                            </Text>
                             <Pressable onPress={() => setShowCreate(false)} className="p-1">
                                 <X size={20} color={fg} />
                             </Pressable>
@@ -98,18 +109,27 @@ export default function TagsManage() {
                             style={{ backgroundColor: '#2c2c2e', color: fg, fontSize: 15 }}
                         />
                         <View className="flex-row gap-2">
-                            {['#6366f1', '#ef4444', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899'].map(color => (
-                                <Pressable
-                                    key={color}
-                                    onPress={() => setNewColor(color)}
-                                    className="w-8 h-8 rounded-full"
-                                    style={{ backgroundColor: color, borderWidth: newColor === color ? 2 : 0, borderColor: '#fff' }}
-                                />
-                            ))}
+                            {['#6366f1', '#ef4444', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899'].map(
+                                color => (
+                                    <Pressable
+                                        key={color}
+                                        onPress={() => setNewColor(color)}
+                                        className="w-8 h-8 rounded-full"
+                                        style={{
+                                            backgroundColor: color,
+                                            borderWidth: newColor === color ? 2 : 0,
+                                            borderColor: '#fff',
+                                        }}
+                                    />
+                                )
+                            )}
                         </View>
                         <View className="flex-row justify-end gap-2">
                             <Pressable
-                                onPress={() => { setShowCreate(false); setNewName('') }}
+                                onPress={() => {
+                                    setShowCreate(false)
+                                    setNewName('')
+                                }}
                                 className="px-4 py-2 rounded-lg"
                             >
                                 <Text style={{ color: muted, fontSize: 14 }}>Cancel</Text>
@@ -120,7 +140,9 @@ export default function TagsManage() {
                                 style={!newName.trim() ? { opacity: 0.5 } : { backgroundColor: bg }}
                                 disabled={!newName.trim()}
                             >
-                                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>Create</Text>
+                                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>
+                                    Create
+                                </Text>
                             </Pressable>
                         </View>
                     </View>

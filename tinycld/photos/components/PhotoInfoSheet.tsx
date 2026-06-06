@@ -1,12 +1,5 @@
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
-import {
-    Heart,
-    Trash2,
-    Download,
-    Album,
-    X,
-    Pencil,
-} from 'lucide-react-native'
+import { Album, Download, Heart, Pencil, Trash2, X } from 'lucide-react-native'
 import { useCallback, useState } from 'react'
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import type { PhotoView } from '../types'
@@ -26,7 +19,7 @@ function formatBytes(bytes: number): string {
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+    return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`
 }
 
 export default function PhotoInfoSheet({
@@ -61,9 +54,17 @@ export default function PhotoInfoSheet({
 
     return (
         <View className="flex-1 bg-background">
-            <View className="flex-row items-center justify-between px-4 py-3 border-b" style={{ borderColor: border }}>
+            <View
+                className="flex-row items-center justify-between px-4 py-3 border-b"
+                style={{ borderColor: border }}
+            >
                 <Text style={{ color: fg, fontSize: 17, fontWeight: '600' }}>Info</Text>
-                <Pressable onPress={onClose} className="p-2" accessibilityRole="button" accessibilityLabel="Close">
+                <Pressable
+                    onPress={onClose}
+                    className="p-2"
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                >
                     <X size={20} color={fg} />
                 </Pressable>
             </View>
@@ -73,7 +74,11 @@ export default function PhotoInfoSheet({
                     <InfoRow label="Date" value={takenDate} />
                     <InfoRow
                         label="Dimensions"
-                        value={photo.width && photo.height ? `${photo.width} × ${photo.height}` : 'Unknown'}
+                        value={
+                            photo.width && photo.height
+                                ? `${photo.width} × ${photo.height}`
+                                : 'Unknown'
+                        }
                     />
                     <InfoRow label="Size" value={formatBytes(photo.size)} />
                     <InfoRow label="Type" value={photo.mimeType} />
@@ -81,9 +86,15 @@ export default function PhotoInfoSheet({
 
                     <View className="pt-2">
                         <View className="flex-row items-center justify-between mb-2">
-                            <Text style={{ color: muted, fontSize: 12, fontWeight: '500' }}>DESCRIPTION</Text>
+                            <Text style={{ color: muted, fontSize: 12, fontWeight: '500' }}>
+                                DESCRIPTION
+                            </Text>
                             {!editing && (
-                                <Pressable onPress={() => setEditing(true)} className="p-1" accessibilityRole="button">
+                                <Pressable
+                                    onPress={() => setEditing(true)}
+                                    className="p-1"
+                                    accessibilityRole="button"
+                                >
                                     <Pencil size={14} color={muted} />
                                 </Pressable>
                             )}
@@ -112,10 +123,17 @@ export default function PhotoInfoSheet({
                                         style={{ backgroundColor: border }}
                                         accessibilityRole="button"
                                     >
-                                        <Text style={{ color: fg, fontSize: 13, fontWeight: '500' }}>Save</Text>
+                                        <Text
+                                            style={{ color: fg, fontSize: 13, fontWeight: '500' }}
+                                        >
+                                            Save
+                                        </Text>
                                     </Pressable>
                                     <Pressable
-                                        onPress={() => { setEditing(false); setDescription(photo.description) }}
+                                        onPress={() => {
+                                            setEditing(false)
+                                            setDescription(photo.description)
+                                        }}
                                         className="px-4 py-2 rounded-lg"
                                         accessibilityRole="button"
                                     >
@@ -132,7 +150,10 @@ export default function PhotoInfoSheet({
                 </View>
             </ScrollView>
 
-            <View className="flex-row items-center justify-around px-4 py-3 border-t gap-2" style={{ borderColor: border }}>
+            <View
+                className="flex-row items-center justify-around px-4 py-3 border-t gap-2"
+                style={{ borderColor: border }}
+            >
                 <ActionButton
                     icon={Heart}
                     label={photo.isFavorite ? 'Unfavorite' : 'Favorite'}
@@ -168,7 +189,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
     return (
         <View className="flex-row justify-between items-start">
-            <Text style={{ color: muted, fontSize: 12, fontWeight: '500', width: 100 }}>{label}</Text>
+            <Text style={{ color: muted, fontSize: 12, fontWeight: '500', width: 100 }}>
+                {label}
+            </Text>
             <Text style={{ color: fg, fontSize: 14, flex: 1, textAlign: 'right' }}>{value}</Text>
         </View>
     )

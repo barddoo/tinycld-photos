@@ -12,12 +12,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-type FaceClusterConfig struct {
-	MinScore    float64
-	MaxDistance float64
-	MinFaces    int
-}
-
 type faceWithEmb struct {
 	record *core.Record
 	emb    []float32
@@ -26,14 +20,6 @@ type faceWithEmb struct {
 type personCluster struct {
 	id         string
 	embeddings [][]float32
-}
-
-func defaultFaceClusterConfig() FaceClusterConfig {
-	return FaceClusterConfig{
-		MinScore:    envFloat("MACHINE_LEARNING_FACIAL_RECOGNITION_MIN_SCORE", 0.7),
-		MaxDistance: envFloat("MACHINE_LEARNING_FACIAL_RECOGNITION_MAX_DISTANCE", 0.5),
-		MinFaces:    envInt("MACHINE_LEARNING_FACIAL_RECOGNITION_MIN_FACES", 3),
-	}
 }
 
 func envFloat(key string, defaultVal float64) float64 {
@@ -55,7 +41,7 @@ func envInt(key string, defaultVal int) int {
 }
 
 func ClusterFaces(ctx context.Context, app *pocketbase.PocketBase, faceRecords []*core.Record) error {
-	cfg := defaultFaceClusterConfig()
+	cfg := loadMLSettings(app)
 	if len(faceRecords) == 0 {
 		return nil
 	}
@@ -122,7 +108,7 @@ func ClusterFaces(ctx context.Context, app *pocketbase.PocketBase, faceRecords [
 					minDist = d
 				}
 			}
-			if minDist < bestDist && minDist < cfg.MaxDistance {
+			if minDist < bestDist && minDist < cfg.MaxFaceDist {
 				bestDist = minDist
 				bestPerson = person.id
 			}

@@ -13,13 +13,8 @@ export default function MemoriesScreen() {
     const surface = useThemeColor('surface')
 
     const renderMemory = ({ item }: { item: MemoryView }) => (
-        <View
-            className="mx-4 my-2 p-4 rounded-xl"
-            style={{ backgroundColor: surface }}
-        >
-            <Text style={{ color: fg, fontSize: 18, fontWeight: '600' }}>
-                {item.title}
-            </Text>
+        <View className="mx-4 my-2 p-4 rounded-xl" style={{ backgroundColor: surface }}>
+            <Text style={{ color: fg, fontSize: 18, fontWeight: '600' }}>{item.title}</Text>
             <Text style={{ color: muted, fontSize: 13, marginTop: 2 }}>
                 {item.type.replace(/_/g, ' ')}
             </Text>
@@ -41,7 +36,10 @@ export default function MemoriesScreen() {
 
     if (memories.length === 0) {
         return (
-            <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: bg }}>
+            <View
+                className="flex-1 items-center justify-center px-8"
+                style={{ backgroundColor: bg }}
+            >
                 <Clock size={48} color={muted} accessibilityRole="image" />
                 <Text style={{ color: muted, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
                     No memories yet. Memories are auto-generated from your photo library.

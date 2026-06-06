@@ -1,5 +1,5 @@
-import { useCallback } from 'react'
 import { queryClient, usePocketBase } from '@tinycld/core/lib/pocketbase'
+import { useCallback } from 'react'
 
 export function useAlbumMutations(orgId: string, userOrgId: string) {
     const pb = usePocketBase()
@@ -19,7 +19,10 @@ export function useAlbumMutations(orgId: string, userOrgId: string) {
     )
 
     const updateAlbum = useCallback(
-        async (albumId: string, data: { name?: string; description?: string; cover_photo?: string | null }) => {
+        async (
+            albumId: string,
+            data: { name?: string; description?: string; cover_photo?: string | null }
+        ) => {
             await pb.collection('photos_albums').update(albumId, data)
             await queryClient.invalidateQueries({ queryKey: ['photos_albums'] })
         },

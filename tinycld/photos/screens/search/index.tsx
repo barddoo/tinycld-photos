@@ -1,5 +1,5 @@
-import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
+import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { router } from 'expo-router'
 import { Search as SearchIcon, X } from 'lucide-react-native'
 import { useCallback, useState } from 'react'
@@ -18,15 +18,21 @@ export default function SearchScreen() {
     const surface = useThemeColor('surface')
     const orgHref = useOrgHref()
 
-    const handlePhotoPress = useCallback((photo: PhotoView) => {
-        router.push(orgHref(`photos/${photo.id}`))
-    }, [orgHref])
+    const handlePhotoPress = useCallback(
+        (photo: PhotoView) => {
+            router.push(orgHref(`photos/${photo.id}`))
+        },
+        [orgHref]
+    )
 
-    const renderItem = useCallback(({ item }: { item: PhotoView }) => (
-        <View className="w-1/3 p-0.5">
-            <PhotoCard photo={item} size={120} onPress={handlePhotoPress} />
-        </View>
-    ), [handlePhotoPress])
+    const renderItem = useCallback(
+        ({ item }: { item: PhotoView }) => (
+            <View className="w-1/3 p-0.5">
+                <PhotoCard photo={item} size={120} onPress={handlePhotoPress} />
+            </View>
+        ),
+        [handlePhotoPress]
+    )
 
     return (
         <View style={{ flex: 1, backgroundColor: bg }}>
@@ -39,7 +45,7 @@ export default function SearchScreen() {
                     <TextInput
                         className="flex-1 ml-2 text-base"
                         style={{ color: fg }}
-                        placeholder="Search photos, people, places\u2026"
+                        placeholder="Search photos, people, places, and more"
                         placeholderTextColor={muted}
                         value={query}
                         onChangeText={setQuery}
@@ -62,7 +68,9 @@ export default function SearchScreen() {
             {!query ? (
                 <View className="flex-1 items-center justify-center px-8">
                     <SearchIcon size={48} color={muted} aria-hidden={true} />
-                    <Text style={{ color: muted, fontSize: 16, marginTop: 12, textAlign: 'center' }}>
+                    <Text
+                        style={{ color: muted, fontSize: 16, marginTop: 12, textAlign: 'center' }}
+                    >
                         Search by filename, description, location, or text found in photos
                     </Text>
                 </View>

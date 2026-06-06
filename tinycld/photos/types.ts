@@ -5,14 +5,26 @@ export type MLStatus = 'pending' | 'processing' | 'done' | 'failed'
 export type MemoryType = 'on_this_day' | 'best_of_month' | 'trip' | 'custom'
 
 export type ActiveSection =
-    | 'timeline' | 'albums' | 'favorites' | 'trash' | 'tags'
-    | 'search' | 'people' | 'memories' | 'duplicates' | 'map'
+    | 'timeline'
+    | 'albums'
+    | 'favorites'
+    | 'trash'
+    | 'tags'
+    | 'search'
+    | 'people'
+    | 'memories'
+    | 'duplicates'
+    | 'map'
 
 export type SourceType = 'ml' | 'manual'
 
 export type JobType =
-    | 'detect_faces' | 'encode_clip' | 'run_ocr'
-    | 'compute_phash' | 'reverse_geocode' | 'recognize_faces'
+    | 'detect_faces'
+    | 'encode_clip'
+    | 'run_ocr'
+    | 'compute_phash'
+    | 'reverse_geocode'
+    | 'recognize_faces'
 
 export type JobStatus = 'pending' | 'processing' | 'done' | 'failed'
 
@@ -36,10 +48,9 @@ export interface PhotoItem {
     owner: string
     search_text: string
     location: string
-    latitude: number
-    longitude: number
+    latitude: number | null
+    longitude: number | null
     smart_search_vector: number[]
-    qdrant_point_id: string
     perceptual_hash: string
     ml_status: MLStatus
     camera_make: string
@@ -159,11 +170,18 @@ export interface PhotosJobQueue {
 export type PhotosSchema = {
     photos_items: {
         type: PhotoItem
-        relations: { org: import('@tinycld/core/types/pbSchema').Orgs; owner: import('@tinycld/core/types/pbSchema').UserOrg }
+        relations: {
+            org: import('@tinycld/core/types/pbSchema').Orgs
+            owner: import('@tinycld/core/types/pbSchema').UserOrg
+        }
     }
     photos_albums: {
         type: PhotoAlbum
-        relations: { cover_photo: PhotoItem; org: import('@tinycld/core/types/pbSchema').Orgs; owner: import('@tinycld/core/types/pbSchema').UserOrg }
+        relations: {
+            cover_photo: PhotoItem
+            org: import('@tinycld/core/types/pbSchema').Orgs
+            owner: import('@tinycld/core/types/pbSchema').UserOrg
+        }
     }
     photos_album_items: {
         type: PhotoAlbumItem
@@ -171,7 +189,10 @@ export type PhotosSchema = {
     }
     photos_tags: {
         type: PhotoTag
-        relations: { org: import('@tinycld/core/types/pbSchema').Orgs; owner: import('@tinycld/core/types/pbSchema').UserOrg }
+        relations: {
+            org: import('@tinycld/core/types/pbSchema').Orgs
+            owner: import('@tinycld/core/types/pbSchema').UserOrg
+        }
     }
     photos_item_tags: {
         type: PhotoItemTag
@@ -179,7 +200,11 @@ export type PhotosSchema = {
     }
     photos_people: {
         type: PhotosPerson
-        relations: { thumbnail_face: PhotosFace; org: import('@tinycld/core/types/pbSchema').Orgs; owner: import('@tinycld/core/types/pbSchema').UserOrg }
+        relations: {
+            thumbnail_face: PhotosFace
+            org: import('@tinycld/core/types/pbSchema').Orgs
+            owner: import('@tinycld/core/types/pbSchema').UserOrg
+        }
     }
     photos_faces: {
         type: PhotosFace
@@ -221,8 +246,8 @@ export interface PhotoView {
     livePhotoPairId: string
     searchText: string
     location: string
-    latitude: number
-    longitude: number
+    latitude: number | null
+    longitude: number | null
     perceptualHash: string
     mlStatus: MLStatus
     cameraMake: string
@@ -260,7 +285,7 @@ export interface MemoryView {
     id: string
     type: MemoryType
     title: string
-    photos: string[]
+    photos: PhotoView[]
     createdAt: string
 }
 

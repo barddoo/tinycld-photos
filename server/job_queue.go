@@ -8,7 +8,7 @@ import (
 	"image/jpeg"
 	"io"
 	"math"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +16,8 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
+
+var mlQueue atomic.Pointer[JobQueue]
 
 type JobType string
 
@@ -38,33 +40,18 @@ const (
 )
 
 type JobQueue struct {
-	app       *pocketbase.PocketBase
-	engine    *InferenceEngine
-	stopCh    chan struct{}
-	batchSize int
-	flushInt  time.Duration
-	nodeID    string
-
-	mu           sync.Mutex
-	collector    map[string]*jobEntry
-	collectTimer *time.Timer
-}
-
-type jobEntry struct {
-	PhotoID   string
-	JobType   JobType
-	ImageData []byte
+	app    *pocketbase.PocketBase
+	engine *InferenceEngine
+	stopCh chan struct{}
+	nodeID string
 }
 
 func NewJobQueue(app *pocketbase.PocketBase, engine *InferenceEngine) *JobQueue {
 	return &JobQueue{
-		app:       app,
-		engine:    engine,
-		stopCh:    make(chan struct{}),
-		batchSize: 8,
-		flushInt:  2 * time.Second,
-		collector: make(map[string]*jobEntry),
-		nodeID:    uuid.New().String()[:8],
+		app:    app,
+		engine: engine,
+		stopCh: make(chan struct{}),
+		nodeID: uuid.New().String()[:8],
 	}
 }
 
@@ -119,25 +106,41 @@ func (q *JobQueue) reconcile() {
 }
 
 func (q *JobQueue) workerLoop() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+
+	lastPoll := time.Now()
+	cfg := loadMLSettings(q.app)
+	cfgLastLoad := time.Now()
 
 	for {
 		select {
 		case <-q.stopCh:
 			return
 		case <-ticker.C:
-			q.processBatch()
+			if time.Since(cfgLastLoad) > 10*time.Second {
+				cfg = loadMLSettings(q.app)
+				cfgLastLoad = time.Now()
+			}
+
+			interval := time.Duration(cfg.PollIntervalSecs) * time.Second
+			if interval < 1 {
+				interval = 1
+			}
+			if time.Since(lastPoll) >= interval {
+				q.processBatch(cfg.BatchSize)
+				lastPoll = time.Now()
+			}
 		}
 	}
 }
 
-func (q *JobQueue) processBatch() {
+func (q *JobQueue) processBatch(batchSize int) {
 	records, err := q.app.FindRecordsByFilter(
 		"photos_job_queue",
 		"status = 'pending' && (scheduled_at = '' || scheduled_at <= @now)",
 		"created_at",
-		q.batchSize, 0,
+		batchSize, 0,
 	)
 	if err != nil || len(records) == 0 {
 		return
@@ -167,10 +170,12 @@ func (q *JobQueue) processJobType(jobType JobType, jobs []*core.Record) {
 		err = q.processDetectFaces(jobs)
 	case JobEncodeCLIP:
 		err = q.processEncodeCLIP(jobs)
+	case JobRunOCR:
+		err = q.processOCR(jobs)
 	case JobComputePHash:
-		err = nil
+		err = q.processComputePHash(jobs)
 	case JobReverseGeocode:
-		err = nil
+		err = q.processReverseGeocode(jobs)
 	default:
 		err = fmt.Errorf("unknown job type: %s", jobType)
 	}
@@ -205,6 +210,8 @@ func (q *JobQueue) processDetectFaces(jobs []*core.Record) error {
 		return nil
 	}
 
+	cfg := loadMLSettings(q.app)
+
 	photos := q.loadPhotos(jobs)
 	for _, photo := range photos {
 		if photo.GetString("file") == "" {
@@ -217,7 +224,7 @@ func (q *JobQueue) processDetectFaces(jobs []*core.Record) error {
 			continue
 		}
 
-		results, err := q.engine.DetectFaces([][]byte{imageData})
+		results, err := q.engine.DetectFaces([][]byte{imageData}, float32(cfg.MinFaceScore))
 		if err != nil {
 			q.app.Logger().Warn("face detect: inference failed", "photo", photo.Id, "error", err)
 			continue
@@ -250,7 +257,7 @@ func (q *JobQueue) processDetectFaces(jobs []*core.Record) error {
 		}
 
 		if len(newFaces) > 0 {
-			q.assignPeople(newFaces, photo.GetString("org"), photo.GetString("owner"))
+			q.assignPeople(newFaces, photo.GetString("org"), photo.GetString("owner"), cfg)
 		}
 
 		photo.Set("ml_status", "processing")
@@ -290,6 +297,125 @@ func (q *JobQueue) processEncodeCLIP(jobs []*core.Record) error {
 		photo := photos[photoIndex[j]]
 		encoded, _ := json.Marshal(emb)
 		photo.Set("smart_search_vector", string(encoded))
+		photo.Set("ml_status", "done")
+		q.app.Save(photo)
+	}
+
+	return nil
+}
+
+func (q *JobQueue) processOCR(jobs []*core.Record) error {
+	if !q.engine.IsAvailable() {
+		return nil
+	}
+
+	photos := q.loadPhotos(jobs)
+	imageDataList := make([][]byte, 0, len(photos))
+	photoRefs := make([]*core.Record, 0, len(photos))
+
+	for _, photo := range photos {
+		if photo.GetString("file") == "" {
+			continue
+		}
+		data, err := q.readPhotoFile(photo)
+		if err != nil {
+			continue
+		}
+		imageDataList = append(imageDataList, data)
+		photoRefs = append(photoRefs, photo)
+	}
+
+	results, err := q.engine.RunOCR(imageDataList)
+	if err != nil {
+		return err
+	}
+
+	textMap := make(map[string]string)
+	for _, r := range results {
+		if r.Text != "" {
+			textMap[r.Text] = r.Text
+		}
+	}
+
+	for _, photo := range photoRefs {
+		existing := photo.GetString("search_text")
+		var combined string
+		if existing != "" {
+			combined = existing
+		}
+		for t := range textMap {
+			if combined != "" {
+				combined += " "
+			}
+			combined += t
+		}
+		if combined != "" {
+			photo.Set("search_text", combined)
+		}
+		photo.Set("ml_status", "done")
+		q.app.Save(photo)
+	}
+
+	return nil
+}
+
+func (q *JobQueue) processComputePHash(jobs []*core.Record) error {
+	photos := q.loadPhotos(jobs)
+
+	for _, photo := range photos {
+		if photo.GetString("file") == "" {
+			continue
+		}
+
+		err := ComputeAndStorePHash(q.app, photo)
+		if err != nil {
+			q.app.Logger().Warn("pHash: compute failed", "photo", photo.Id, "error", err)
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (q *JobQueue) processReverseGeocode(jobs []*core.Record) error {
+	if !globalGeoIndex.ready {
+		return nil
+	}
+
+	photos := q.loadPhotos(jobs)
+
+	for _, photo := range photos {
+		lat := photo.GetFloat("latitude")
+		lon := photo.GetFloat("longitude")
+		if lat == 0 && lon == 0 {
+			continue
+		}
+
+		city, state, country := globalGeoIndex.ReverseGeocode(lat, lon)
+		if city == "" && state == "" && country == "" {
+			continue
+		}
+
+		parts := []string{}
+		if city != "" {
+			parts = append(parts, city)
+		}
+		if state != "" {
+			parts = append(parts, state)
+		}
+		if country != "" {
+			parts = append(parts, country)
+		}
+
+		location := ""
+		if len(parts) > 0 {
+			location = parts[0]
+			for _, p := range parts[1:] {
+				location += ", " + p
+			}
+		}
+
+		photo.Set("location", location)
 		photo.Set("ml_status", "done")
 		q.app.Save(photo)
 	}
@@ -371,9 +497,7 @@ func (q *JobQueue) recognizeFace(img640 []byte, bbox [4]float32) []float32 {
 }
 
 // assignPeople matches new face records (with embeddings) to existing people or creates new ones.
-func (q *JobQueue) assignPeople(faces []*core.Record, orgID, ownerID string) {
-	cfg := defaultFaceClusterConfig()
-
+func (q *JobQueue) assignPeople(faces []*core.Record, orgID, ownerID string, cfg MLSettings) {
 	existingFaces, _ := q.app.FindRecordsByFilter("photos_faces", "person != '' && is_visible = true && embedding != ''", "", 0, 0)
 
 	type personEmbs struct {
@@ -417,7 +541,7 @@ func (q *JobQueue) assignPeople(faces []*core.Record, orgID, ownerID string) {
 		for _, pe := range personMap {
 			for _, pemb := range pe.embeddings {
 				d := cosineDist(emb, pemb)
-				if d < bestDist && d < cfg.MaxDistance {
+				if d < bestDist && d < cfg.MaxFaceDist {
 					bestDist = d
 					bestPerson = pe.id
 				}

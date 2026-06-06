@@ -3,14 +3,14 @@ import { DocumentTitle } from '@tinycld/core/components/DocumentTitle'
 import { EmptyState } from '@tinycld/core/components/EmptyState'
 import { LoadingState } from '@tinycld/core/components/LoadingState'
 import { useBreakpoint } from '@tinycld/core/components/workspace/useBreakpoint'
-import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
 import { useOrgHref } from '@tinycld/core/lib/org-routes'
-import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
+import { useCurrentUserOrg } from '@tinycld/core/lib/use-current-user-org'
+import { useOrgInfo } from '@tinycld/core/lib/use-org-info'
 import { router } from 'expo-router'
 import { Plus, X } from 'lucide-react-native'
 import { useCallback, useState } from 'react'
-import { Pressable, Text, TextInput, View, Modal } from 'react-native'
+import { Modal, Pressable, Text, TextInput, View } from 'react-native'
 import AlbumCard from '../../components/AlbumCard'
 import { useAlbumMutations } from '../../hooks/useAlbumMutations'
 import { useAlbums } from '../../hooks/useAlbums'
@@ -100,13 +100,18 @@ export default function AlbumsIndex() {
             </Pressable>
 
             <Modal visible={showCreate} transparent animationType="fade">
-                <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+                <View
+                    className="flex-1 items-center justify-center px-6"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+                >
                     <View
                         className="w-full max-w-sm rounded-xl p-5 gap-4"
                         style={{ backgroundColor: '#1c1c1e' }}
                     >
                         <View className="flex-row items-center justify-between">
-                            <Text style={{ color: fg, fontSize: 17, fontWeight: '600' }}>New Album</Text>
+                            <Text style={{ color: fg, fontSize: 17, fontWeight: '600' }}>
+                                New Album
+                            </Text>
                             <Pressable onPress={() => setShowCreate(false)} className="p-1">
                                 <X size={20} color={fg} />
                             </Pressable>
@@ -130,7 +135,10 @@ export default function AlbumsIndex() {
                         />
                         <View className="flex-row justify-end gap-2">
                             <Pressable
-                                onPress={() => { setShowCreate(false); setNewName('') }}
+                                onPress={() => {
+                                    setShowCreate(false)
+                                    setNewName('')
+                                }}
                                 className="px-4 py-2 rounded-lg"
                                 accessibilityRole="button"
                             >
@@ -143,7 +151,9 @@ export default function AlbumsIndex() {
                                 disabled={!newName.trim()}
                                 accessibilityRole="button"
                             >
-                                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>Create</Text>
+                                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>
+                                    Create
+                                </Text>
                             </Pressable>
                         </View>
                     </View>

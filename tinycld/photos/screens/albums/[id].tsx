@@ -8,7 +8,7 @@ import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ArrowLeft } from 'lucide-react-native'
 import { useCallback, useMemo, useState } from 'react'
-import { Dimensions, Pressable, RefreshControl, Text, View } from 'react-native'
+import { Pressable, Text, useWindowDimensions, View } from 'react-native'
 import DateSectionHeader from '../../components/DateSectionHeader'
 import PhotoCard from '../../components/PhotoCard'
 import { useAlbumPhotos } from '../../hooks/useAlbums'
@@ -23,6 +23,8 @@ type ListRow =
 
 export default function AlbumDetail() {
     const { id } = useLocalSearchParams<{ id: string }>()
+    const windowDimensions = useWindowDimensions()
+    const [containerWidth, setContainerWidth] = useState(windowDimensions.width)
     const orgHref = useOrgHref()
     const isMobile = useBreakpoint() === 'mobile'
     const fg = useThemeColor('foreground')
@@ -30,8 +32,15 @@ export default function AlbumDetail() {
     const { photos, isLoading } = useAlbumPhotos(id)
 
     const cols = isMobile ? 3 : 4
-    const screenWidth = Dimensions.get('window').width
-    const cardSize = Math.floor((screenWidth - GRID_PADDING * 2 - GRID_GAP * (cols - 1)) / cols)
+    const cardSize = Math.max(
+        1,
+        Math.floor((containerWidth - GRID_PADDING * 2 - GRID_GAP * (cols - 1)) / cols)
+    )
+
+    const handleLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+        const { width } = event.nativeEvent.layout
+        setContainerWidth(prev => (Math.round(prev) === Math.round(width) ? prev : width))
+    }, [])
 
     const handlePhotoPress = useCallback(
         (photo: PhotoView) => {
@@ -49,12 +58,9 @@ export default function AlbumDetail() {
         return photos.map(photo => ({ kind: 'photo' as const, photo }))
     }, [photos])
 
-    const overrideItemLayout = useCallback(
-        (layout: { span?: number }) => {
-            layout.span = 1
-        },
-        []
-    )
+    const overrideItemLayout = useCallback((layout: { span?: number }) => {
+        layout.span = 1
+    }, [])
 
     const renderItem = useCallback(
         ({ item }: { item: ListRow }) => {
@@ -63,11 +69,7 @@ export default function AlbumDetail() {
             }
             return (
                 <View style={{ paddingHorizontal: GRID_GAP / 2, paddingBottom: GRID_GAP }}>
-                    <PhotoCard
-                        photo={item.photo}
-                        size={cardSize}
-                        onPress={handlePhotoPress}
-                    />
+                    <PhotoCard photo={item.photo} size={cardSize} onPress={handlePhotoPress} />
                 </View>
             )
         },
@@ -84,10 +86,15 @@ export default function AlbumDetail() {
     }
 
     return (
-        <View className="flex-1 bg-background">
+        <View className="flex-1 bg-background" onLayout={handleLayout}>
             <DocumentTitle pkg="Album" />
             <View className="flex-row items-center px-4 py-3 border-b border-border">
-                <Pressable onPress={handleBack} className="p-2 mr-2" accessibilityRole="button" accessibilityLabel="Back">
+                <Pressable
+                    onPress={handleBack}
+                    className="p-2 mr-2"
+                    accessibilityRole="button"
+                    accessibilityLabel="Back"
+                >
                     <ArrowLeft size={22} color={fg} />
                 </Pressable>
                 <Text numberOfLines={1} style={{ color: fg, fontSize: 17, fontWeight: '600' }}>
@@ -104,7 +111,10 @@ export default function AlbumDetail() {
                     keyExtractor={keyExtractor}
                     numColumns={cols}
                     overrideItemLayout={overrideItemLayout}
-                    contentContainerStyle={{ paddingHorizontal: GRID_PADDING - GRID_GAP / 2, paddingTop: 8 }}
+                    contentContainerStyle={{
+                        paddingHorizontal: GRID_PADDING - GRID_GAP / 2,
+                        paddingTop: 8,
+                    }}
                 />
             )}
         </View>

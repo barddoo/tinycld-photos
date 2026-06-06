@@ -2,7 +2,6 @@ package photos
 
 import (
 	"os"
-	"sync/atomic"
 	"time"
 
 	"github.com/pocketbase/pocketbase"
@@ -36,8 +35,6 @@ func Register(app *pocketbase.PocketBase) {
 			return audit.ResolveViaRelation(a, "photos_albums", albumID, "org")
 		},
 	})
-
-	var queue atomic.Pointer[JobQueue]
 
 	routine.FireAndForget(func() {
 		defer func() {
@@ -93,10 +90,26 @@ func Register(app *pocketbase.PocketBase) {
 
 		q := NewJobQueue(app, engine)
 		q.Start()
-		queue.Store(q)
+		mlQueue.Store(q)
 
 		app.Logger().Info("ML engine initialized")
 	})
+
+	routine.FireAndForget(func() {
+		if err := InitGeoCodeIndexFrom(""); err != nil {
+			app.Logger().Warn("geocode index init failed", "error", err)
+		} else {
+			app.Logger().Info("geocode index loaded")
+		}
+	})
+
+	routine.FireAndForget(func() {
+		searcher := NewVectorSearcher(app)
+		SetVectorSearcher(searcher)
+		app.Logger().Info("vector searcher initialized")
+	})
+
+	RegisterMLAPI(app)
 
 	app.OnRecordCreate("photos_items").BindFunc(func(e *core.RecordEvent) error {
 		if e.Record.GetString("ml_status") == "" {
@@ -114,10 +127,28 @@ func Register(app *pocketbase.PocketBase) {
 			extractImageMetadata(app, e.Record)
 			tryPairLivePhoto(app, e.Record)
 
-			if q := queue.Load(); q != nil {
-				for _, jt := range []JobType{JobComputePHash, JobReverseGeocode, JobDetectFaces, JobEncodeCLIP, JobRunOCR} {
+			if q := mlQueue.Load(); q != nil {
+				cfg := loadMLSettings(app)
+
+				jobs := []JobType{JobComputePHash, JobDetectFaces, JobEncodeCLIP}
+				if cfg.OCREnabled {
+					jobs = append(jobs, JobRunOCR)
+				}
+
+				for _, jt := range jobs {
 					if err := q.Enqueue(e.Record.Id, jt); err != nil {
 						app.Logger().Error("failed to enqueue ML job", "photo", e.Record.Id, "job", jt, "error", err)
+					}
+				}
+
+				fresh, _ := app.FindRecordById("photos_items", e.Record.Id)
+				if fresh != nil {
+					lat := fresh.GetFloat("latitude")
+					lon := fresh.GetFloat("longitude")
+					if lat != 0 || lon != 0 {
+						if err := q.Enqueue(e.Record.Id, JobReverseGeocode); err != nil {
+							app.Logger().Error("failed to enqueue geocode job", "photo", e.Record.Id, "error", err)
+						}
 					}
 				}
 			}
@@ -136,10 +167,28 @@ func Register(app *pocketbase.PocketBase) {
 		routine.FireAndForget(func() {
 			extractImageMetadata(app, e.Record)
 
-			if q := queue.Load(); q != nil {
-				for _, jt := range []JobType{JobComputePHash, JobReverseGeocode, JobDetectFaces, JobEncodeCLIP, JobRunOCR} {
+			if q := mlQueue.Load(); q != nil {
+				cfg := loadMLSettings(app)
+
+				jobs := []JobType{JobComputePHash, JobDetectFaces, JobEncodeCLIP}
+				if cfg.OCREnabled {
+					jobs = append(jobs, JobRunOCR)
+				}
+
+				for _, jt := range jobs {
 					if err := q.Enqueue(e.Record.Id, jt); err != nil {
 						app.Logger().Error("failed to enqueue ML job", "photo", e.Record.Id, "job", jt, "error", err)
+					}
+				}
+
+				fresh, _ := app.FindRecordById("photos_items", e.Record.Id)
+				if fresh != nil {
+					lat := fresh.GetFloat("latitude")
+					lon := fresh.GetFloat("longitude")
+					if lat != 0 || lon != 0 {
+						if err := q.Enqueue(e.Record.Id, JobReverseGeocode); err != nil {
+							app.Logger().Error("failed to enqueue geocode job", "photo", e.Record.Id, "error", err)
+						}
 					}
 				}
 			}

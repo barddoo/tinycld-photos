@@ -1,9 +1,15 @@
-import { useAuthedThumbnailURL } from '@tinycld/core/file-viewer/use-authed-file-url'
 import { StarIcon } from '@tinycld/core/components/StarIcon'
+import { useAuthedThumbnailURL } from '@tinycld/core/file-viewer/use-authed-file-url'
+import { Image } from 'expo-image'
 import { memo, useCallback } from 'react'
-import { Alert, Image, Pressable, View } from 'react-native'
+import { Pressable, View } from 'react-native'
 import { photoToSource } from '../lib/file-url'
 import type { PhotoView } from '../types'
+
+const s = {
+    placeholder: { flex: 1 } as const,
+    starBadge: { position: 'absolute' as const, top: 6, right: 6 } as const,
+} as const
 
 interface Props {
     photo: PhotoView
@@ -13,7 +19,9 @@ interface Props {
 }
 
 const PhotoCard = memo(function PhotoCard({ photo, size, onPress, onLongPress }: Props) {
-    const { url: thumbnailUrl } = useAuthedThumbnailURL(photoToSource(photo), `${size * 2}x${size * 2}`)
+    const source = photoToSource(photo)
+    const thumbSize = `${size * 2}x${size * 2}`
+    const { url: thumbnailUrl } = useAuthedThumbnailURL(source, thumbSize)
 
     const handlePress = useCallback(() => onPress(photo), [photo, onPress])
 
@@ -36,16 +44,22 @@ const PhotoCard = memo(function PhotoCard({ photo, size, onPress, onLongPress }:
                 <Image
                     source={{ uri: thumbnailUrl }}
                     style={{ width: size, height: size }}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    recyclingKey={photo.id}
+                    transition={150}
                 />
             ) : (
-                <View className="flex-1 bg-muted-foreground/10 items-center justify-center" style={{ width: size, height: size }} />
+                <View
+                    className="flex-1 bg-muted-foreground/10 items-center justify-center"
+                    style={s.placeholder}
+                />
             )}
-            {photo.isFavorite && (
-                <View className="absolute top-1.5 right-1.5">
+            {photo.isFavorite ? (
+                <View style={s.starBadge}>
                     <StarIcon isStarred size={14} />
                 </View>
-            )}
+            ) : null}
         </Pressable>
     )
 })

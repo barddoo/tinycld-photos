@@ -32,7 +32,12 @@ const NAV_EXTRA: NavItem[] = [
     { section: 'trash', label: 'Trash', icon: Trash2, route: 'photos?section=trash' },
 ]
 
-const DIVIDER = { height: 1, backgroundColor: 'rgba(128,128,128,0.15)', marginHorizontal: 12, marginVertical: 8 }
+const DIVIDER = {
+    height: 1,
+    backgroundColor: 'rgba(128,128,128,0.15)',
+    marginHorizontal: 12,
+    marginVertical: 8,
+}
 
 export default function PhotosSidebar() {
     const fg = useThemeColor('foreground')
@@ -67,10 +72,7 @@ export default function PhotosSidebar() {
                 accessibilityLabel={item.label}
                 accessibilityState={{ selected: isActive }}
             >
-                <Icon
-                    size={18}
-                    color={isActive ? activeBg : muted}
-                />
+                <Icon size={18} color={isActive ? activeBg : muted} />
                 <Text
                     style={{
                         color: isActive ? activeBg : fg,
@@ -87,7 +89,14 @@ export default function PhotosSidebar() {
     return (
         <View className="p-3 gap-1">
             <Text
-                style={{ color: muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.5, paddingHorizontal: 12, paddingVertical: 8 }}
+                style={{
+                    color: muted,
+                    fontSize: 11,
+                    fontWeight: '600',
+                    letterSpacing: 0.5,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                }}
                 className="uppercase"
             >
                 Photos

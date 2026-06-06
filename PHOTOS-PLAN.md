@@ -125,63 +125,54 @@ Add search, AI features, discovery surfaces.
 
 ### ML Architecture
 
-ML inference in Python/FastAPI sidecar. Go server calls via HTTP. Models auto-download from HuggingFace Hub, cached to disk with TTL eviction.
+ML inference runs **in-process in Go** via ONNX Runtime (`github.com/yalue/onnxruntime-go`). No separate ML server, no HTTP calls between Go and Python. Models auto-download from HuggingFace Hub on startup, cached to disk with TTL eviction.
 
 #### Deployment Model
 
-ML server as **optional sidecar** in same `docker-compose.yml`:
+ML is built into the Go server binary — no sidecar needed. A single PocketBase process handles everything:
 
-```yaml
-services:
-  tinycld:
-    image: ghcr.io/tinycld/app:latest
-
-  tinycld-ml:
-    image: ghcr.io/tinycld/ml:latest  # Python/FastAPI + ONNX Runtime
-    environment:
-      MACHINE_LEARNING_CACHE_FOLDER: /tmp/ml_models
-      MACHINE_LEARNING_MODEL_TTL: 300
-    volumes:
-      - ml-cache:/tmp/ml_models
-    # Optional GPU passthrough:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           capabilities: [gpu]
+```
+┌─────────────────────────────────────┐
+│  PocketBase (Go)                    │
+│  ├── HTTP API                       │
+│  ├── photos_items CRUD hooks        │
+│  ├── JobQueue (goroutine worker)    │
+│  ├── InferenceEngine (ONNX Runtime) │
+│  │   ├── Face Detection (buffalo_l) │
+│  │   ├── Face Recognition (ArcFace) │
+│  │   ├── CLIP Visual (SigLIP2)      │
+│  │   ├── CLIP Textual (SigLIP2)     │
+│  │   ├── OCR Detection (PP-OCRv4)   │
+│  │   └── OCR Recognition (PP-OCRv4) │
+│  └── VectorSearcher                 │
+│       ├── BruteForce (in-process)   │
+│       └── usearch (optional HNSW)   │
+└─────────────────────────────────────┘
 ```
 
-- ML server **optional** — photos package works without it (no faces, no smart search, no OCR)
-- Go server detects ML availability via health check ping
-- All ML features degrade when ML server absent
+- ML **optional** — toggle via `MACHINE_LEARNING_ENABLED` env var
+- No GPU support yet (ONNX Runtime Go bindings have limited CUDA support). All inference on CPU.
+- Models download from HuggingFace Hub on first start, cached under `MACHINE_LEARNING_CACHE_FOLDER` (default `/tmp/ml_models`)
 
-#### ML Server (Python microservice)
+#### Inference Engine
 
-- **FastAPI** app with `/predict` endpoint accepting multipart form data (image + pipeline spec)
-- **ONNX Runtime** inference engine — supports CPU, CUDA, ROCm, OpenVINO, CoreML, ARMNN, RKNN
-- **Model cache**: in-memory LRU with TTL eviction (default 300s). Unload after inactivity, auto-reload on next request
-- **Thread pool**: configurable worker threads (default = CPU count)
-- **Batch axis injection**: adds batch dimension to ONNX models for batched inference
-- **Model formats**: ONNX (universal), ARMNN (Raspberry Pi), RKNN (Rockchip NPU), OpenVINO (Intel)
-- **Model downloads**: HuggingFace Hub snapshots, stored under `cache_folder/<task>/<model_name>/`
+- **ONNX Runtime Go bindings** via `github.com/yalue/onnxruntime-go`
+- Sessions created at startup for each model, reused for all inference calls
+- **Thread-safe**: `sync.RWMutex` guards session access
+- **Output handling**: tensor data read directly via `ort.Value.GetData()` — no Python marshalling overhead
+- **Model downloads**: `ModelManager` downloads ONNX files from HuggingFace, caches with TTL eviction. Currently SigLIP2 (CLIP), InsightFace buffalo_l (face), PP-OCRv4 (OCR). ONNX files stored on disk, loaded into memory at startup.
 
-#### Pipeline Architecture
+#### Job Queue (goroutine-based worker)
 
-Inference request specifies **pipeline** — model tasks in dependency order:
+In-memory job queue with `photos_job_queue` table for durability:
 
-```json
-{
-  "facial-recognition": {
-    "detection": { "modelName": "buffalo_l", "options": { "minScore": 0.7 } },
-    "recognition": { "modelName": "buffalo_l" }
-  }
-}
-```
+- **Enqueue**: on photo upload, insert rows for `compute_phash`, `detect_faces`, `encode_clip` (and `run_ocr` if enabled)
+- **Worker**: goroutine polls pending jobs in batches, feeds to `InferenceEngine`
+- **Batching**: ONNX Runtime gives 3.2× speed-up at batch=8 vs batch=1 on CPU. `BatchCollector` groups pending jobs, flushes on batch full (default 8) or timer (2s).
+- **Retry**: exponential backoff `2^attempts * 30s`, max 3 attempts
+- **Reconciliation**: on boot, reset `processing` → `pending`, re-queue `failed` with `attempts < 3`
 
-- **Without-deps tasks** run in parallel (face detection, CLIP visual encoding, OCR detection)
-- **With-deps tasks** run after (face recognition needs detection output, OCR recognition needs detection output)
-- Pipeline resolves dependency graph, runs independent tasks concurrently via `asyncio.gather`
+#### Face Clustering
 
 #### Model Zoo
 
@@ -215,7 +206,7 @@ AdaFace maintains best average accuracy across corruption levels, stronger on lo
 
 **Alternative stacks**:
 
-| Option | Accuracy | ONNX ready | License (models) | Complexity |
+| Option | Accuracy | ONNX ready | License (models) | Complexity s
 |---|---|---|---|---|
 | InsightFace buffalo_l (ArcFace) | Best of open models | Yes, bundled | Non-commercial without license | Low |
 | AdaFace | Better on low-quality images | Manual export from PyTorch | Research license on weights | Medium |
@@ -243,7 +234,7 @@ ML server acts as proxy: receives image → forwards to Ollama → returns capti
   - `latitude` — number, GPS latitude from EXIF
   - `longitude` — number, GPS longitude from EXIF
   - `smart_search_vector` — blob, CLIP embedding stored as raw binary float32 array (512–1024 × 4 bytes)
-  - `qdrant_point_id` — text, UUID of the Qdrant point if using Tier 2 Qdrant sidecar (null for brute-force mode)
+  - `qdrant_point_id` — text, UUID of the Qdrant point if using Tier 2 Qdrant sidecar (null for brute-force mode)  *(deprecated, removed in current version)*
   - `perceptual_hash` — text, pHash hex string for duplicate detection
   - `ml_status` — select: `pending` | `processing` | `done` | `failed` — tracks ML pipeline state per photo
 
@@ -276,27 +267,23 @@ Store embeddings as raw `BLOB` (binary float32 array) in SQLite. On query: load 
 - Zero additional infrastructure, no CGO, no sidecar
 - **Do this for v3.**
 
-**Tier 2: Qdrant sidecar (optional, >100K photos)**
+**Tier 2: usearch HNSW (optional, >100K photos)**
 
-```yaml
-services:
-  tinycld-qdrant:
-    image: qdrant/qdrant:latest
-    volumes:
-      - qdrant-storage:/qdrant/storage
-    ports:
-      - "6333:6333"
-```
+Embedded HNSW index using [usearch](https://github.com/unum-cloud/usearch). No external service — the index is an in-process HNSW graph persisted to disk as a single `.index` file. SQLite remains the source of truth; the usearch index is rebuilt from SQLite on startup.
 
-Qdrant is ~256MB RAM idle, clean REST API, HNSW index, quantization support. Go server calls Qdrant instead of in-process cosine similarity. Store `qdrant_point_id` on `photos_items`, query Qdrant at search time.
+Vectors stored as JSON in `smart_search_vector` (SQLite), mirroring Tier 1. usearch adds ~1MB RAM + ~5% of vector data size (512 × float32 = 2KB/vector, index overhead ~30%).
 
-- **Do this if multi-tenant or >100K photos per org**
+| Scale | RAM (index) | Query latency | Notes |
+|---|---|---|---|
+| 10K photos | ~30MB | <1ms | Instant |
+| 100K photos | ~300MB | 1–5ms | Sub-millisecond ANN |
+| 500K+ photos | ~1.5GB | 5–20ms | HNSW scales to millions |
 
-**Tier 3: sqlite-vec (future, watch only)**
+- **Requires CGO** (usearch C library installed). Already compatible since ONNX Runtime also needs CGO.
+- Set `USEARCH_INDEX_PATH=./data/usearch_clip.index` env var to enable; omit for Tier 1 brute-force.
+- On boot, index rebuilt from SQLite vectors. For >100K vectors this takes seconds.
 
-Embedded SQLite extension — no external service. Requires CGO and custom PocketBase build. Still alpha (v0.1.7.alpha as of early 2025).
-
-**Graceful degradation**: if `QDRANT_URL` is configured, use Qdrant; otherwise fall back to in-process brute-force. Same code path, different backend.
+**Graceful degradation**: if `USEARCH_INDEX_PATH` is set, use usearch; otherwise fall back to in-process brute-force. Same code path, different backend.
 
 #### Job Persistence Layer
 
@@ -319,8 +306,7 @@ In-memory channel queue loses work on restart. `photos_job_queue` table provides
 
 **Batching**: ONNX Runtime gives 3.2× speed-up at batch=8 vs batch=1 on CPU. `BatchCollector` collects pending jobs, flushes when batch is full (default 8) or timer expires (2s). Flush sends all photos in one multipart request to ML sidecar, receives N results, updates each job individually.
 
-**Batch size tuning**:
-- GPU: batch=16–32
+**Batch size tuning** (configurable via settings panel, default 8):
 - CPU: batch=4–8
 - Low-power (N100): batch=4
 
@@ -335,9 +321,9 @@ In-memory channel queue loses work on restart. `photos_job_queue` table provides
 Greedy nearest-neighbor with configurable thresholds:
 
 1. **Detection**: RetinaFace finds faces, ArcFace generates 512-dim embeddings
-2. **Storage**: embeddings stored as binary BLOB in `photos_faces.embedding` (2048 bytes). If Qdrant enabled, also maintain separate `photos_faces` Qdrant collection
+2. **Storage**: embeddings stored as binary BLOB in `photos_faces.embedding` (2048 bytes). If usearch enabled, also index face embeddings in a separate usearch index
 3. **Recognition**: for each unassigned face:
-   - Load all face embeddings for the org, compute cosine distances in Go (or query Qdrant if configured)
+   - Load all face embeddings for the org, compute cosine distances in Go (or query usearch if configured)
    - Find faces within `maxDistance` (cosine distance, default ~0.5)
    - Require `minFaces` (default 3) matches to consider "core" person
    - If matches include existing person → assign to that person
@@ -351,7 +337,7 @@ Greedy nearest-neighbor with configurable thresholds:
 - `maxDistance`: max cosine distance for face matching (default 0.5)
 - `minFaces`: minimum faces to form "core" person (default 3)
 
-**Performance**: brute-force cosine similarity is O(n²) for n faces. For 10K faces, ~100M distance computations — manageable in Go with SIMD (~100ms). For 100K+ faces, use Qdrant.
+**Performance**: brute-force cosine similarity is O(n²) for n faces. For 10K faces, ~100M distance computations — manageable in Go with SIMD (~100ms). For 100K+ faces, use usearch HNSW.
 
 **Known limitation — transitive chaining**: greedy nearest-neighbor can chain incorrectly (A matches B, B matches C, but A and C aren't same person). Mitigations:
 - Keep `maxDistance` conservative (0.4–0.5)
@@ -363,14 +349,14 @@ Future improvement (v3.x): replace with HDBSCAN or graph-based clustering (conne
 #### Smart Search (CLIP Embeddings)
 
 1. **Encoding**: CLIP model encodes image → 512-dim vector (default ViT-B-32)
-2. **Storage**: vectors stored as binary BLOB in `photos_items.smart_search_vector`. If Qdrant enabled, also store point UUID in `qdrant_point_id` and push vector to Qdrant collection
+2. **Storage**: vectors stored as JSON in `photos_items.smart_search_vector`. If usearch enabled, also index in usearch HNSW index
 3. **Query**: user types text → Go server encodes text with CLIP textual model → gets text embedding → searches:
    - **Brute-force mode** (default): load all org embeddings from SQLite, compute cosine similarity in Go, return top results
-   - **Qdrant mode** (if `QDRANT_URL` configured): send text embedding to Qdrant KNN API, return top results
+   - **usearch mode** (if `USEARCH_INDEX_PATH` configured): search usearch HNSW index, return top results
 4. **Multilingual**: MCLIP models support 100+ languages via XLM-Roberta backbone
 5. **Image-to-image**: search by photo → use existing asset's embedding as query vector
 6. **Caching**: in-memory LRU cache (100 entries) for text embeddings in Go server
-7. **Model switching**: changing CLIP model invalidates all embeddings (set to null + `ml_status` to `pending`), requires re-index. If Qdrant, also recreate collection with new dimension size.
+7. **Model switching**: changing CLIP model invalidates all embeddings (set to null + `ml_status` to `pending`), requires re-index. If usearch, delete and recreate the index file with new dimension size.
 
 **Configurable params**:
 - `modelName`: CLIP model name (default ViT-B-32)
@@ -408,29 +394,12 @@ Future improvement (v3.x): replace with HDBSCAN or graph-based clustering (conne
 - **Grouping**: photos with near-identical pHash (Hamming distance ≤ threshold, default 5) grouped as duplicates
 - **UI**: show duplicate groups, let user keep best, delete rest
 
-#### ML Server Health Monitoring
+#### Engine Health
 
-- **Availability checks**: ping ML server URL at configurable interval (default 30s)
-- **Healthy-first routing**: try healthy servers first, fall back to unhealthy
-- **Auto-recovery**: server marked unhealthy, retried on next interval, auto-recovers
-- **Multi-server**: support multiple ML server URLs for load balancing / HA
-- **Graceful degradation**: all ML features silently disabled when no healthy server
-
-#### Go Server ML Client
-
-```go
-type MLClient struct {
-    urls    []string
-    healthy map[string]bool
-    mu      sync.RWMutex
-    client  *http.Client
-}
-
-func (c *MLClient) Predict(ctx context.Context, image io.Reader, pipeline PipelineSpec) (Response, error)
-func (c *MLClient) Ping() bool
-```
-
-Builds multipart form: "entries" = JSON pipeline, "image" = file bytes. Tries healthy URLs first, falls back to unhealthy.
+- **Availability**: `InferenceEngine` initialized at startup, all models loaded before processing begins
+- **Graceful degradation**: if engine init fails, ML features silently disabled via nil `queue` pointer
+- **Status endpoint**: `GET /api/photos/ml/status` reports engine availability, job counts, settings
+- **No separate ML server** — all inference runs in the Go process
 
 #### Vector Search Client
 
@@ -441,7 +410,7 @@ type VectorSearcher interface {
     Delete(ctx context.Context, photoID string) error
 }
 
-// Factory: if QDRANT_URL env var is set, return QdrantSearcher; else BruteForceSearcher
+// Factory: if USEARCH_INDEX_PATH env var is set, return UsearchSearcher; else BruteForceSearcher
 func NewVectorSearcher(app *pocketbase.PocketBase) VectorSearcher
 ```
 
@@ -463,7 +432,7 @@ Settings panel controls:
 - Face recognition max distance + min faces
 - CLIP model name
 - OCR enabled + model + min scores
-- Vector search mode: brute-force (default) or Qdrant (if URL configured)
+- Vector search mode: brute-force (default) or usearch (if `USEARCH_INDEX_PATH` set)
 - Run initial processing (button to queue all existing photos)
 - Retry failed items (button to re-queue photos with `ml_status = 'failed'`)
 - Processing status (pending / processing / done / failed counts, current job)
@@ -519,30 +488,52 @@ Per-photo status: tracked via `photos_items.ml_status` (`pending` | `processing`
 - Use `ViT-B-32` for CLIP
 - Skip OCR if not needed (PP-OCRv5 is slowest pipeline component on CPU)
 
-**GPU passthrough**: Docker supports NVIDIA GPU via `--gpus` flag. ML sidecar accepts `MACHINE_LEARNING_DEVICE_ID=0` to use CUDA.
+**GPU**: ONNX Runtime Go bindings have limited CUDA support. For GPU-accelerated inference, the Python/FastAPI sidecar architecture is still the recommended path (see Future Architecture below).
 
 ```
+# ML — optional, all inference runs in-process via ONNX Runtime
 MACHINE_LEARNING_ENABLED=true
-MACHINE_LEARNING_URLS=http://tinycld-ml:3003
-MACHINE_LEARNING_FACIAL_RECOGNITION_MODEL=buffalo_l
-MACHINE_LEARNING_FACIAL_RECOGNITION_MIN_SCORE=0.7
-MACHINE_LEARNING_FACIAL_RECOGNITION_MAX_DISTANCE=0.5
-MACHINE_LEARNING_FACIAL_RECOGNITION_MIN_FACES=3
-MACHINE_LEARNING_CLIP_MODEL_NAME=ViT-B-32__openai
-MACHINE_LEARNING_OCR_ENABLED=true
-MACHINE_LEARNING_OCR_MODEL_NAME=PP-OCRv5_mobile
-MACHINE_LEARNING_OCR_MIN_DETECTION_SCORE=0.5
-MACHINE_LEARNING_OCR_MIN_RECOGNITION_SCORE=0.9
+ONNXRUNTIME_SHARED_LIBRARY_PATH=libonnxruntime.so
 MACHINE_LEARNING_CACHE_FOLDER=/tmp/ml_models
-MACHINE_LEARNING_MODEL_TTL=300
-MACHINE_LEARNING_WORKERS=1
-MACHINE_LEARNING_DEVICE_ID=0  # GPU device
 
-# Vector search (optional — if set, use Qdrant; otherwise brute-force in Go)
-QDRANT_URL=http://tinycld-qdrant:6333
-QDRANT_COLLECTION=photos_clip
-QDRANT_API_KEY=  # optional
+# Vector search (optional — if set, use usearch HNSW; otherwise brute-force in Go)
+# Requires usearch C library installed
+USEARCH_INDEX_PATH=./data/usearch_clip.index
 ```
+
+#### Future Architecture: Python/FastAPI Sidecar
+
+The current in-process Go ONNX Runtime is good for small-to-medium libraries on CPU. For GPU acceleration, multilingual CLIP (MCLIP), or larger scale, extract ML into a Python/FastAPI sidecar:
+
+```yaml
+services:
+  tinycld:
+    image: ghcr.io/tinycld/app:latest
+
+  tinycld-ml:
+    image: ghcr.io/tinycld/ml:latest  # Python/FastAPI + ONNX Runtime
+    environment:
+      MACHINE_LEARNING_CACHE_FOLDER: /tmp/ml_models
+      DEVICE: cuda  # or cpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+```
+
+The switch is straightforward because all Go code already uses interface abstractions:
+
+- **`InferenceEngine`** → extract `TextEncoder`, `ImageEncoder`, `FaceDetector`, `OCREngine` interfaces. Each has two impls: Go ONNX Runtime (current, default) and HTTP client to Python sidecar.
+- **`VectorSearcher`** already has this pattern (`BruteForceSearcher` ↔ `UsearchSearcher`). Apply same to encoding.
+- **Job queue** stays the same — it enqueues jobs regardless of where inference runs.
+
+Migration path:
+1. Extract interfaces for each model task
+2. Move current Go ONNX Runtime code behind those interfaces as default impl
+3. Add HTTP client impl pointing to Python sidecar
+4. Users opt in via `MACHINE_LEARNING_URLS` env var
 
 #### Migrations (pb-migrations)
 
@@ -554,7 +545,7 @@ pb-migrations/
   1717000004_create_photos_memory_items.js
   1717000005_create_photos_ml_state.js
   1717000006_create_photos_job_queue.js
-  1717000007_add_fields_photos_items_v3.js  # search_text, location, lat/lon, smart_search_vector, qdrant_point_id, perceptual_hash, ml_status
+   1717000007_add_fields_photos_items_v3.js  # search_text, location, lat/lon, smart_search_vector, perceptual_hash, ml_status
 ```
 
 Each migration follows PocketBase JS migration format with `migrate((app) => { ... })` and rollback.

@@ -30,10 +30,22 @@ export default function VideoThumbnail({ photo, size, onPress }: Props) {
     }
 
     return (
-        <Pressable onPress={() => onPress(photo)} className="relative" accessibilityRole="button" accessibilityLabel={photo.name}>
-            <View style={{ width: size, height: size }} className="bg-muted-foreground/10 rounded-lg overflow-hidden">
+        <Pressable
+            onPress={() => onPress(photo)}
+            className="relative"
+            accessibilityRole="button"
+            accessibilityLabel={photo.name}
+        >
+            <View
+                style={{ width: size, height: size }}
+                className="bg-muted-foreground/10 rounded-lg overflow-hidden"
+            >
                 {thumbnailUrl ? (
-                    <Image source={{ uri: thumbnailUrl }} className="w-full h-full" resizeMode="cover" />
+                    <Image
+                        source={{ uri: thumbnailUrl }}
+                        className="w-full h-full"
+                        resizeMode="cover"
+                    />
                 ) : (
                     <View className="flex-1 items-center justify-center bg-muted-foreground/20">
                         <Text style={{ fontSize: 24 }}>🎬</Text>
@@ -48,7 +60,9 @@ export default function VideoThumbnail({ photo, size, onPress }: Props) {
 
                 {photo.duration > 0 && (
                     <View className="absolute bottom-1 right-1 bg-black/70 rounded px-1.5 py-0.5">
-                        <Text className="text-white text-xs font-medium">{formatDuration(photo.duration)}</Text>
+                        <Text className="text-white text-xs font-medium">
+                            {formatDuration(photo.duration)}
+                        </Text>
                     </View>
                 )}
             </View>

@@ -15,20 +15,20 @@ import (
 type ModelTask string
 
 const (
-	TaskFaceDetection  ModelTask = "face_detection"
+	TaskFaceDetection   ModelTask = "face_detection"
 	TaskFaceRecognition ModelTask = "face_recognition"
-	TaskCLIPVisual     ModelTask = "clip_visual"
-	TaskCLIPTextual    ModelTask = "clip_textual"
-	TaskOCRDetection   ModelTask = "ocr_detection"
-	TaskOCRRecognition ModelTask = "ocr_recognition"
+	TaskCLIPVisual      ModelTask = "clip_visual"
+	TaskCLIPTextual     ModelTask = "clip_textual"
+	TaskOCRDetection    ModelTask = "ocr_detection"
+	TaskOCRRecognition  ModelTask = "ocr_recognition"
 )
 
 type ModelEntry struct {
-	Task       ModelTask
-	Name       string
-	URL        string
-	Checksum   string
-	FileName   string
+	Task     ModelTask
+	Name     string
+	URL      string
+	Checksum string
+	FileName string
 }
 
 type ModelManager struct {
