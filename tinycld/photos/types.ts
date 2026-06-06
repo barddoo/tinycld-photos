@@ -133,6 +133,7 @@ export interface PhotosMemory {
     title: string
     data: Record<string, unknown>
     owner: string
+    org: string
     created: string
     updated: string
 }

@@ -31,7 +31,9 @@ export function useMemories() {
     const memories = useMemo<MemoryView[]>(() => {
         if (!rawMemories) return []
 
-        const memoryItems = (rawMemoryItems || []) as PhotosMemoryItem[]
+        const memoryItems = (rawMemoryItems ?? []).map(
+            row => (row as unknown as { mi: PhotosMemoryItem }).mi
+        )
         const photos = (rawPhotos || []) as PhotoItem[]
 
         const photoMap = new Map(photos.map(p => [p.id, photoToView(p)]))
