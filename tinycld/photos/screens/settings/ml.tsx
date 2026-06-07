@@ -11,6 +11,7 @@ import {
 	TextInput,
 	View,
 } from "react-native";
+import { confirm } from "../../lib/confirm";
 
 interface MLConfig {
 	enabled: boolean;
@@ -52,6 +53,7 @@ export default function MLSettings() {
 	const [status, setStatus] = useState<MLStatus | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [reprocessing, setReprocessing] = useState(false);
+	const [reclustering, setReclustering] = useState(false);
 
 	const fetchStatus = useCallback(async () => {
 		try {
@@ -126,45 +128,65 @@ export default function MLSettings() {
 	]);
 
 	const handleReprocess = useCallback(async () => {
-		Alert.alert(
+		const confirmed = await confirm(
 			"Reprocess Photos",
 			"This will re-run ML processing on all photos. Continue?",
-			[
-				{ text: "Cancel", style: "cancel" },
-				{
-					text: "Reprocess",
-					onPress: async () => {
-						setReprocessing(true);
-						try {
-							const resp = await pb.send("/api/photos/ml/reprocess", {
-								method: "POST",
-								body: {
-									job_types: [
-										"detect_faces",
-										"encode_clip",
-										"run_ocr",
-										"compute_phash",
-										"reverse_geocode",
-									],
-									status: "all",
-								},
-							});
-							const result = resp as { enqueued: number; photos: number };
-							Alert.alert(
-								"Done",
-								`Enqueued ${result.enqueued} jobs for ${result.photos} photos`,
-							);
-							fetchStatus();
-						} catch {
-							Alert.alert("Error", "Failed to start reprocessing");
-						} finally {
-							setReprocessing(false);
-						}
-					},
-				},
-			],
+			{ confirmLabel: "Reprocess" },
 		);
+		if (!confirmed) return;
+
+		setReprocessing(true);
+		try {
+			const resp = await pb.send("/api/photos/ml/reprocess", {
+				method: "POST",
+				body: {
+					job_types: [
+						"detect_faces",
+						"encode_clip",
+						"run_ocr",
+						"compute_phash",
+						"reverse_geocode",
+					],
+					status: "all",
+				},
+			});
+			const result = resp as { enqueued: number; photos: number };
+			Alert.alert(
+				"Done",
+				`Enqueued ${result.enqueued} jobs for ${result.photos} photos`,
+			);
+			fetchStatus();
+		} catch {
+			Alert.alert("Error", "Failed to start reprocessing");
+		} finally {
+			setReprocessing(false);
+		}
 	}, [fetchStatus]);
+
+	const handleRecluster = useCallback(async () => {
+		const confirmed = await confirm(
+			"Re-cluster People",
+			"Assign unassigned faces and auto-merge duplicate person clusters using the current Max Face Distance. Continue?",
+			{ confirmLabel: "Re-cluster" },
+		);
+		if (!confirmed) return;
+
+		setReclustering(true);
+		try {
+			const resp = await pb.send("/api/photos/people/recluster", {
+				method: "POST",
+			});
+			const result = resp as { assigned: number; merged: number };
+			Alert.alert(
+				"Done",
+				`Assigned ${result.assigned} face(s) to people, merged ${result.merged} duplicate cluster(s).`,
+			);
+		} catch {
+			Alert.alert("Error", "Failed to re-cluster people");
+		} finally {
+			setReclustering(false);
+		}
+	}, []);
 
 	const Field = ({
 		label,
@@ -427,6 +449,23 @@ export default function MLSettings() {
 				</Pressable>
 				<Text style={{ color: muted, fontSize: 11, textAlign: "center" }}>
 					Re-runs ML detection on all photos with pending/failed status
+				</Text>
+
+				<Pressable
+					className="flex-row items-center justify-center gap-2 py-3 rounded-xl"
+					style={{ backgroundColor: surface, opacity: reclustering ? 0.5 : 1 }}
+					onPress={handleRecluster}
+					disabled={reclustering}
+					accessibilityRole="button"
+					accessibilityLabel="Re-cluster people"
+				>
+					<RefreshCw size={18} color={fg} accessibilityRole="image" />
+					<Text style={{ color: fg, fontSize: 15, fontWeight: "500" }}>
+						{reclustering ? "Re-clustering..." : "Re-cluster People"}
+					</Text>
+				</Pressable>
+				<Text style={{ color: muted, fontSize: 11, textAlign: "center" }}>
+					Assigns unassigned faces and merges duplicate person clusters
 				</Text>
 			</View>
 		</ScrollView>

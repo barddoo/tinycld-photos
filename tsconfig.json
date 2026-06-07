@@ -1,10 +1,10 @@
 {
-	"extends": "../app/tsconfig.package-base.json",
+	"extends": "../app/core/tsconfig.package-base.json",
 	"compilerOptions": {
 		"baseUrl": ".",
 		"paths": {
 			"~/tinycld/photos/*": ["./tinycld/photos/*"],
-			"@tinycld/core/*": ["../core/*"],
+			"@tinycld/core/*": ["../app/core/*"],
 			"@tinycld/app-generated/*": ["../app/lib/generated/*"]
 		}
 	},

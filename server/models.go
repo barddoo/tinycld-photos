@@ -23,12 +23,18 @@ const (
 	TaskOCRRecognition  ModelTask = "ocr_recognition"
 )
 
-type ModelEntry struct {
-	Task     ModelTask
-	Name     string
-	URL      string
-	Checksum string
+type ExtraFile struct {
 	FileName string
+	URL      string
+}
+
+type ModelEntry struct {
+	Task       ModelTask
+	Name       string
+	URL        string
+	Checksum   string
+	FileName   string
+	ExtraFiles []ExtraFile // downloaded to the same directory as FileName, not tracked in loaded
 }
 
 type ModelManager struct {
@@ -84,6 +90,12 @@ var defaultModelCatalog = []ModelEntry{
 		FileName: "model.onnx",
 		URL:      "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/main/textual/model.onnx",
 		Checksum: "",
+		ExtraFiles: []ExtraFile{
+			{
+				FileName: "tokenizer.json",
+				URL:      "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/main/textual/tokenizer.json",
+			},
+		},
 	},
 	{
 		Task:     TaskOCRDetection,
@@ -128,6 +140,21 @@ func (m *ModelManager) ensureModel(entry ModelEntry) error {
 			m.mu.Lock()
 			m.loaded[entry.Task] = modelPath
 			m.mu.Unlock()
+			// Still try to fetch any extra files that may be missing.
+			for _, extra := range entry.ExtraFiles {
+				extraPath := filepath.Join(modelDir, extra.FileName)
+				if _, err := os.Stat(extraPath); err == nil {
+					continue
+				}
+				tmp := extraPath + ".download"
+				if err := m.downloadFile(extra.URL, tmp); err != nil {
+					os.Remove(tmp)
+					continue
+				}
+				if err := os.Rename(tmp, extraPath); err != nil {
+					os.Remove(tmp)
+				}
+			}
 			return nil
 		}
 	}
@@ -159,6 +186,24 @@ func (m *ModelManager) ensureModel(entry ModelEntry) error {
 	m.mu.Lock()
 	m.loaded[entry.Task] = modelPath
 	m.mu.Unlock()
+
+	// Download extra files (e.g. tokenizer.json) to the same directory.
+	// Failures are non-fatal — the model still works without them.
+	for _, extra := range entry.ExtraFiles {
+		extraPath := filepath.Join(modelDir, extra.FileName)
+		if _, err := os.Stat(extraPath); err == nil {
+			continue // already present
+		}
+		tmp := extraPath + ".download"
+		if err := m.downloadFile(extra.URL, tmp); err != nil {
+			os.Remove(tmp)
+			continue
+		}
+		if err := os.Rename(tmp, extraPath); err != nil {
+			os.Remove(tmp)
+		}
+	}
+
 	return nil
 }
 

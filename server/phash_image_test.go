@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	imgFace     = "../../tests/data/man.jpg"
-	imgNoFace   = "../../tests/data/motorcycle.jpg"
-	imgGroup    = "../../tests/data/5-humans.jpg"
+	imgFace   = "../../tests/data/man.jpg"
+	imgNoFace = "../../tests/data/motorcycle.jpg"
+	imgGroup  = "../../tests/data/5-humans.jpg"
 )
 
 func readTestImage(t *testing.T, path string) []byte {

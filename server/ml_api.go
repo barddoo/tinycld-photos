@@ -27,6 +27,12 @@ func RegisterMLAPI(app *pocketbase.PocketBase) {
 		e.Router.POST("/api/photos/ml/search", func(re *core.RequestEvent) error {
 			return handleSemanticSearch(app, re)
 		})
+		e.Router.POST("/api/photos/people/merge", func(re *core.RequestEvent) error {
+			return handleMergePeople(app, re)
+		})
+		e.Router.POST("/api/photos/people/recluster", func(re *core.RequestEvent) error {
+			return handleRecluster(app, re)
+		})
 		return e.Next()
 	})
 }
@@ -48,7 +54,7 @@ func loadMLSettings(app *pocketbase.PocketBase) MLSettings {
 		return MLSettings{
 			OCREnabled:       true,
 			MinFaceScore:     0.7,
-			MaxFaceDist:      0.5,
+			MaxFaceDist:      0.6,
 			MinFaces:         3,
 			PollIntervalSecs: 30,
 			BatchSize:        8,
@@ -290,6 +296,60 @@ func handleSemanticSearch(app *pocketbase.PocketBase, re *core.RequestEvent) err
 	}
 
 	return re.JSON(http.StatusOK, map[string]interface{}{"results": out})
+}
+
+func handleMergePeople(app *pocketbase.PocketBase, re *core.RequestEvent) error {
+	if re.Auth == nil {
+		return re.UnauthorizedError("Authentication required", nil)
+	}
+
+	var body struct {
+		SourceID string `json:"source_id"`
+		TargetID string `json:"target_id"`
+	}
+	if err := json.NewDecoder(re.Request.Body).Decode(&body); err != nil {
+		return re.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
+	}
+	if body.SourceID == "" || body.TargetID == "" {
+		return re.JSON(http.StatusBadRequest, map[string]string{"error": "source_id and target_id required"})
+	}
+
+	callerOrg := re.Auth.GetString("org")
+
+	source, err := app.FindRecordById("photos_people", body.SourceID)
+	if err != nil || source.GetString("org") != callerOrg {
+		return re.ForbiddenError("Not authorized", nil)
+	}
+	target, err := app.FindRecordById("photos_people", body.TargetID)
+	if err != nil || target.GetString("org") != callerOrg {
+		return re.ForbiddenError("Not authorized", nil)
+	}
+
+	if err := MergePeople(re.Request.Context(), app, body.SourceID, body.TargetID); err != nil {
+		app.Logger().Error("merge people failed", "source", body.SourceID, "target", body.TargetID, "error", err)
+		return re.JSON(http.StatusInternalServerError, map[string]string{"error": "merge failed"})
+	}
+	return re.JSON(http.StatusOK, map[string]string{"status": "merged"})
+}
+
+func handleRecluster(app *pocketbase.PocketBase, re *core.RequestEvent) error {
+	if re.Auth == nil {
+		return re.UnauthorizedError("Authentication required", nil)
+	}
+	orgID := re.Auth.GetString("org")
+	if orgID == "" {
+		return re.ForbiddenError("Not authorized", nil)
+	}
+
+	assigned, merged, err := ReclusterAndMergePeople(re.Request.Context(), app, orgID)
+	if err != nil {
+		app.Logger().Error("recluster failed", "org", orgID, "error", err)
+		return re.JSON(http.StatusInternalServerError, map[string]string{"error": "recluster failed"})
+	}
+	return re.JSON(http.StatusOK, map[string]interface{}{
+		"assigned": assigned,
+		"merged":   merged,
+	})
 }
 
 func enqueueJobDirect(app *pocketbase.PocketBase, photoID string, jobType JobType) error {

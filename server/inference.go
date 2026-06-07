@@ -40,9 +40,10 @@ type InferenceEngine struct {
 	libPath  string
 	cacheDir string
 
-	sessions map[ModelTask]*ort.DynamicAdvancedSession
-	names    map[ModelTask]*modelIONames
-	mu       sync.RWMutex
+	sessions  map[ModelTask]*ort.DynamicAdvancedSession
+	names     map[ModelTask]*modelIONames
+	tokenizer *UnigramTokenizer
+	mu        sync.RWMutex
 
 	available bool
 	gpuReady  string
@@ -191,6 +192,13 @@ func (e *InferenceEngine) LoadModel(task ModelTask, modelPath string) error {
 
 	e.sessions[task] = session
 	e.names[task] = &modelIONames{InputNames: inNames, OutputNames: outNames, OutputShapes: outShapes}
+
+	if task == TaskCLIPTextual {
+		tokPath := strings.TrimSuffix(modelPath, "model.onnx") + "tokenizer.json"
+		if tok, err := loadUnigramTokenizer(tokPath); err == nil {
+			e.tokenizer = tok
+		}
+	}
 
 	return nil
 }
@@ -451,13 +459,34 @@ func (e *InferenceEngine) EncodeClipText(texts []string) ([][]float32, error) {
 	}
 
 	maxLen := 64
-	tokenized := tokenizeTexts(texts, maxLen)
+	e.mu.RLock()
+	tok := e.tokenizer
+	e.mu.RUnlock()
+
+	var tokenized [][]int32
+	if tok != nil {
+		tokenized = make([][]int32, len(texts))
+		for i, text := range texts {
+			tokenized[i] = tok.Encode(text, maxLen)
+		}
+	} else {
+		// Fallback: legacy hash tokenizer (produces poor quality embeddings).
+		raw := tokenizeTexts(texts, maxLen)
+		tokenized = make([][]int32, len(raw))
+		for i, ids := range raw {
+			t32 := make([]int32, len(ids))
+			for j, v := range ids {
+				t32[j] = int32(v)
+			}
+			tokenized[i] = t32
+		}
+	}
 
 	inputIds := make([]int32, batchSize*maxLen)
 	attnMask := make([]int32, batchSize*maxLen)
 	for i, ids := range tokenized {
 		for j, id := range ids {
-			inputIds[i*maxLen+j] = int32(id)
+			inputIds[i*maxLen+j] = id
 			if id != 0 {
 				attnMask[i*maxLen+j] = 1
 			}

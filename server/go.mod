@@ -50,4 +50,4 @@ require (
 	modernc.org/sqlite v1.52.0 // indirect
 )
 
-replace tinycld.org/core => ../../core/server
+replace tinycld.org/core => ../../app/core/server
