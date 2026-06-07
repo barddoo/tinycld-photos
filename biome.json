@@ -1,6 +1,6 @@
 {
-    "extends": "//",
-    "formatter": {
-        "indentWidth": 2
-    }
+	"extends": "//",
+	"formatter": {
+		"indentWidth": 2
+	}
 }

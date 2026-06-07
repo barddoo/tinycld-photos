@@ -1,13 +1,17 @@
 {
-    "extends": "../app/tsconfig.package-base.json",
-    "compilerOptions": {
-        "baseUrl": ".",
-        "paths": {
-            "~/tinycld/photos/*": ["./tinycld/photos/*"],
-            "@tinycld/core/*": ["../core/*"],
-            "@tinycld/app-generated/*": ["../app/lib/generated/*"]
-        }
-    },
-    "include": ["tinycld/**/*.ts", "tinycld/**/*.tsx", "../app/uniwind-types.d.ts"],
-    "exclude": ["node_modules", "server", "pb-migrations", "tests/**/*.spec.ts"]
+	"extends": "../app/tsconfig.package-base.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"~/tinycld/photos/*": ["./tinycld/photos/*"],
+			"@tinycld/core/*": ["../core/*"],
+			"@tinycld/app-generated/*": ["../app/lib/generated/*"]
+		}
+	},
+	"include": [
+		"tinycld/**/*.ts",
+		"tinycld/**/*.tsx",
+		"../app/uniwind-types.d.ts"
+	],
+	"exclude": ["node_modules", "server", "pb-migrations", "tests/**/*.spec.ts"]
 }

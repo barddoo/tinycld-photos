@@ -1,6 +1,6 @@
-import path from 'node:path'
-import { defineConfig } from '@playwright/test'
-import appConfig from '../app/playwright.config'
+import path from "node:path";
+import { defineConfig } from "@playwright/test";
+import appConfig from "../app/playwright.config";
 
 // Package-scoped Playwright: inherit the app shell's webServer + browser config,
 // then point testDir at THIS package's tests/e2e through the app shell's
@@ -11,10 +11,17 @@ import appConfig from '../app/playwright.config'
 // The @tinycld/photos symlink lives in the workspace-root node_modules (deps
 // hoist there in this layout). Routing testDir through it keeps node resolution
 // walking up into the install where @playwright/test lives.
-const WS_ROOT = path.resolve(import.meta.dirname, '..')
-const TEST_DIR = path.join(WS_ROOT, 'node_modules', '@tinycld', 'photos', 'tests', 'e2e')
+const WS_ROOT = path.resolve(import.meta.dirname, "..");
+const TEST_DIR = path.join(
+	WS_ROOT,
+	"node_modules",
+	"@tinycld",
+	"photos",
+	"tests",
+	"e2e",
+);
 
 export default defineConfig({
-    ...appConfig,
-    testDir: TEST_DIR,
-})
+	...appConfig,
+	testDir: TEST_DIR,
+});
