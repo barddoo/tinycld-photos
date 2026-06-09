@@ -2,4 +2,4 @@ go 1.25.0
 
 use .
 
-replace tinycld.org/core => ../../app/core/server
+replace tinycld.org/core => ../../tinycld/core/server

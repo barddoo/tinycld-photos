@@ -86,6 +86,8 @@ func handleMLStatus(app *pocketbase.PocketBase, re *core.RequestEvent) error {
 	if q := mlQueue.Load(); q != nil && q.engine != nil {
 		status["engine_available"] = q.engine.IsAvailable()
 		status["gpu_provider"] = q.engine.GPUProvider()
+		status["clip_textual_loaded"] = q.engine.HasClipTextual()
+		status["tokenizer_loaded"] = q.engine.HasTokenizer()
 	}
 
 	records, _ := app.FindRecordsByFilter("photos_job_queue", "", "", 0, 0)
@@ -266,7 +268,16 @@ func handleSemanticSearch(app *pocketbase.PocketBase, re *core.RequestEvent) err
 
 	q := mlQueue.Load()
 	if q == nil || q.engine == nil {
-		return re.JSON(http.StatusOK, map[string]interface{}{"results": []interface{}{}})
+		return re.JSON(http.StatusOK, map[string]interface{}{
+			"results": []interface{}{},
+			"debug":   "ml engine not loaded",
+		})
+	}
+	if !q.engine.HasClipTextual() {
+		return re.JSON(http.StatusOK, map[string]interface{}{
+			"results": []interface{}{},
+			"debug":   "clip textual model not loaded",
+		})
 	}
 
 	embeddings, err := q.engine.EncodeClipText([]string{body.Query})
@@ -274,12 +285,18 @@ func handleSemanticSearch(app *pocketbase.PocketBase, re *core.RequestEvent) err
 		return re.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	if len(embeddings) == 0 {
-		return re.JSON(http.StatusOK, map[string]interface{}{"results": []interface{}{}})
+		return re.JSON(http.StatusOK, map[string]interface{}{
+			"results": []interface{}{},
+			"debug":   "text encoding returned empty",
+		})
 	}
 
 	searcher := GetVectorSearcher()
 	if searcher == nil {
-		return re.JSON(http.StatusOK, map[string]interface{}{"results": []interface{}{}})
+		return re.JSON(http.StatusOK, map[string]interface{}{
+			"results": []interface{}{},
+			"debug":   "vector searcher not initialized",
+		})
 	}
 
 	results, err := searcher.Search(re.Request.Context(), embeddings[0], body.TopK)
@@ -295,7 +312,22 @@ func handleSemanticSearch(app *pocketbase.PocketBase, re *core.RequestEvent) err
 		})
 	}
 
-	return re.JSON(http.StatusOK, map[string]interface{}{"results": out})
+	indexedCount := 0
+	if rows, err := app.FindRecordsByFilter(
+		"photos_items",
+		"smart_search_vector != null && smart_search_vector != ''",
+		"", 1000, 0,
+	); err == nil {
+		indexedCount = len(rows)
+	}
+
+	debugInfo := map[string]interface{}{
+		"tokenizer_loaded": q.engine.HasTokenizer(),
+		"results_found":    len(results),
+		"indexed_photos":   indexedCount,
+	}
+
+	return re.JSON(http.StatusOK, map[string]interface{}{"results": out, "debug": debugInfo})
 }
 
 func handleMergePeople(app *pocketbase.PocketBase, re *core.RequestEvent) error {
@@ -314,7 +346,10 @@ func handleMergePeople(app *pocketbase.PocketBase, re *core.RequestEvent) error 
 		return re.JSON(http.StatusBadRequest, map[string]string{"error": "source_id and target_id required"})
 	}
 
-	callerOrg := re.Auth.GetString("org")
+	callerOrg, err := getUserOrgID(app, re.Auth.Id)
+	if err != nil || callerOrg == "" {
+		return re.ForbiddenError("Not authorized", nil)
+	}
 
 	source, err := app.FindRecordById("photos_people", body.SourceID)
 	if err != nil || source.GetString("org") != callerOrg {
@@ -336,8 +371,8 @@ func handleRecluster(app *pocketbase.PocketBase, re *core.RequestEvent) error {
 	if re.Auth == nil {
 		return re.UnauthorizedError("Authentication required", nil)
 	}
-	orgID := re.Auth.GetString("org")
-	if orgID == "" {
+	orgID, err := getUserOrgID(app, re.Auth.Id)
+	if err != nil || orgID == "" {
 		return re.ForbiddenError("Not authorized", nil)
 	}
 
@@ -365,4 +400,17 @@ func enqueueJobDirect(app *pocketbase.PocketBase, photoID string, jobType JobTyp
 	record.Set("attempts", 0)
 
 	return app.Save(record)
+}
+
+func getUserOrgID(app *pocketbase.PocketBase, userID string) (string, error) {
+	records, err := app.FindRecordsByFilter(
+		"user_org",
+		"user = {:user}",
+		"", 1, 0,
+		map[string]any{"user": userID},
+	)
+	if err != nil || len(records) == 0 {
+		return "", fmt.Errorf("no org membership found")
+	}
+	return records[0].GetString("org"), nil
 }

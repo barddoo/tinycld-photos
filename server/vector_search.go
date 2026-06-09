@@ -1,5 +1,9 @@
 package photos
 
+// #cgo CFLAGS: -I/usr/local/include
+// #cgo LDFLAGS: -L/usr/local/lib -Wl,-rpath,/usr/local/lib
+import "C"
+
 import (
 	"context"
 	"encoding/json"
@@ -91,9 +95,6 @@ func (s *BruteForceSearcher) Search(ctx context.Context, query []float32, topK i
 			continue
 		}
 		sim := cosineSimilarity(query, vec)
-		if sim < 0.1 {
-			continue
-		}
 		candidates = append(candidates, scoredPhoto{r.Id, sim})
 	}
 
@@ -285,9 +286,6 @@ func (s *UsearchSearcher) Search(ctx context.Context, query []float32, topK int)
 	results := make([]SearchResult, 0, len(keys))
 	for i := range keys {
 		score := 1.0 - distances[i]
-		if score < 0.1 {
-			continue
-		}
 		strID, ok := idMap.GetString(uint64(keys[i]))
 		if !ok {
 			continue

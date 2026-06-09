@@ -51,7 +51,9 @@ export function useSearch({ query, debounceMs = 300 }: UseSearchOptions) {
 				signal: controller.signal,
 			});
 			if (controller.signal.aborted) return;
-			const results = (resp as { results: SemanticResult[] }).results || [];
+			const body = resp as { results: SemanticResult[]; debug?: unknown };
+			if (body.debug) console.log("[search debug]", q, body.debug);
+			const results = body.results || [];
 			setSemanticResults(results);
 		} catch {
 			if (!controller.signal.aborted) {

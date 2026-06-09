@@ -21,7 +21,7 @@ Photos for your organization — [tinycld](https://tinycld.org/) feature package
 - Hidden people support (exclude from suggestions)
 
 ### Semantic search & OCR
-- Natural-language semantic search powered by CLIP (ViT-B-16-SigLIP2 / ViT-B-32)
+- Natural-language semantic search powered by CLIP (ViT-B-16-SigLIP2)
 - Text-in-image search via OCR (PaddleOCR detection + recognition models)
 - Filter by tags, date ranges, and people from the same search screen
 
@@ -50,6 +50,10 @@ Photos for your organization — [tinycld](https://tinycld.org/) feature package
 - Models auto-downloaded from HuggingFace on first use and cached locally
 - ML settings screen: toggle OCR, tune face score thresholds, select CLIP model, trigger reprocess
 - Vector search via HNSW index (USearch) with brute-force SQLite fallback
+
+### Possible future upgrades
+
+- CLIP model: [`nllb-clip-large-siglip__mrl`](https://huggingface.co/immich-app/nllb-clip-large-siglip__mrl) — highest recall on benchmarks; multilingual-optimised (recommended when primary search language is non-English)
 
 ## Development
 

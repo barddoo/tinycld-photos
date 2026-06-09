@@ -47,7 +47,7 @@ require (
 	modernc.org/libc v1.72.5 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.52.0 // indirect
+	modernc.org/sqlite v1.51.0 // indirect
 )
 
-replace tinycld.org/core => ../../app/core/server
+replace tinycld.org/core => ../../tinycld/core/server

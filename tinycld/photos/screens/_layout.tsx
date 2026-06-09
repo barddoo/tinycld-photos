@@ -7,12 +7,12 @@ export default function PhotosLayout() {
 			<Stack.Screen name="index" />
 			<Stack.Screen name="[id]" options={{ animation: "slide_from_right" }} />
 			<Stack.Screen name="albums" />
-			<Stack.Screen name="tags" />
-			<Stack.Screen name="search" />
-			<Stack.Screen name="people" />
-			<Stack.Screen name="memories" />
-			<Stack.Screen name="map" />
-			<Stack.Screen name="duplicates" />
+			<Stack.Screen name="tags/index" />
+			<Stack.Screen name="search/index" />
+			<Stack.Screen name="people/index" />
+			<Stack.Screen name="memories/index" />
+			<Stack.Screen name="map/index" />
+			<Stack.Screen name="duplicates/index" />
 		</FrozenSlideStack>
 	);
 }

@@ -85,6 +85,19 @@ func (e *InferenceEngine) IsAvailable() bool {
 	return e.available
 }
 
+func (e *InferenceEngine) HasClipTextual() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	_, ok := e.sessions[TaskCLIPTextual]
+	return ok
+}
+
+func (e *InferenceEngine) HasTokenizer() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.tokenizer != nil
+}
+
 func (e *InferenceEngine) buildSessionOptions() *ort.SessionOptions {
 	opts, err := ort.NewSessionOptions()
 	if err != nil {
